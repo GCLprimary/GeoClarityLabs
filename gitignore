@@ -6,10 +6,7 @@ __pycache__/
 venv/
 .venv/
 
-# GCL persistent state — these are machine-specific, don't commit
-field_state.json
-ouro_truth_library.json
-exhaust_memory.json
+# GCL — keep session_epoch and diagnostics local only
 session_epoch.txt
 diagnostic_results.json
 *.backup.json
