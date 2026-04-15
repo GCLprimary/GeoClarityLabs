@@ -1,0 +1,93 @@
+[
+  {
+    "label": "WARMUP",
+    "type": "warmup",
+    "mean_ns": 0.7415,
+    "variance": 0.4691,
+    "gradient": 0.846,
+    "range": 2.538,
+    "res": 0.827,
+    "stress": 0.3192,
+    "score": 0.503,
+    "locked": true,
+    "output": "Dogs like their."
+  },
+  {
+    "label": "A1",
+    "type": "uniform_low",
+    "mean_ns": 1.0258,
+    "variance": 0.4155,
+    "gradient": 0.7273,
+    "range": 2.077,
+    "res": 0.855,
+    "stress": 0.3055,
+    "score": 0.414,
+    "locked": true,
+    "output": "Birds know each birds birds."
+  },
+  {
+    "label": "A2",
+    "type": "uniform_low",
+    "mean_ns": 2.5078,
+    "variance": 2.0086,
+    "gradient": 1.5381,
+    "range": 4.769,
+    "res": 0.875,
+    "stress": 0.2789,
+    "score": 0.621,
+    "locked": true,
+    "output": "Mitochondrial atps electron birds chain mitochondrial facilitate phosphorylation complexes oxidative transport."
+  },
+  {
+    "label": "B1",
+    "type": "uniform_high",
+    "mean_ns": 2.4825,
+    "variance": 2.3088,
+    "gradient": 2.423,
+    "range": 4.692,
+    "res": 0.875,
+    "stress": 0.2909,
+    "score": 0.991,
+    "locked": true,
+    "output": "Mechanism cuprates critical birds thresholds condensation lattices superconducting exhibit temperature."
+  },
+  {
+    "label": "B2",
+    "type": "uniform_high",
+    "mean_ns": 1.2367,
+    "variance": 2.0864,
+    "gradient": 0.9998,
+    "range": 4.538,
+    "res": 0.875,
+    "stress": 0.2381,
+    "score": 0.695,
+    "locked": true,
+    "output": "Mitochondria produces inside birds cells mitochondria."
+  },
+  {
+    "label": "C1",
+    "type": "mixed_variance",
+    "mean_ns": 1.7804,
+    "variance": 2.5074,
+    "gradient": 2.3494,
+    "range": 5.231,
+    "res": 0.875,
+    "stress": 0.2578,
+    "score": 1.021,
+    "locked": true,
+    "output": "A superconductors electricity birds resistance superconductors materials cooled all when."
+  },
+  {
+    "label": "C2",
+    "type": "mixed_variance",
+    "mean_ns": 2.1654,
+    "variance": 3.6958,
+    "gradient": 2.4048,
+    "range": 6.923,
+    "res": 0.875,
+    "stress": 0.2886,
+    "score": 1.331,
+    "locked": true,
+    "output": "The gradients dielectric birds electric directly gradients requiring polarization arises flexoelectric when."
+  }
+]

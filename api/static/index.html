@@ -1,0 +1,1170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GCL — Geometric Clarity Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #080b0f;
+    --bg2:       #0d1117;
+    --bg3:       #131920;
+    --border:    #1e2d3d;
+    --border2:   #243447;
+    --accent:    #00d4ff;
+    --accent2:   #0099cc;
+    --gold:      #f0a500;
+    --gold2:     #c88400;
+    --pos:       #00e676;
+    --neg:       #ff5252;
+    --text:      #c8d8e8;
+    --text2:     #7a99b8;
+    --text3:     #3d5a7a;
+    --mono:      'Space Mono', monospace;
+    --display:   'Syne', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.6;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── Background grid ── */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px;
+    opacity: 0.3;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ── Header ── */
+  header {
+    position: relative;
+    z-index: 10;
+    padding: 28px 40px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: flex-end;
+    gap: 24px;
+    background: linear-gradient(to bottom, #0a1018, transparent);
+  }
+
+  .logo {
+    font-family: var(--display);
+    font-size: 26px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    color: #fff;
+  }
+  .logo span { color: var(--accent); }
+
+  .tagline {
+    font-size: 11px;
+    color: var(--text3);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding-bottom: 3px;
+  }
+
+  .header-links {
+    margin-left: auto;
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    padding-bottom: 2px;
+  }
+  .header-links a {
+    color: var(--text3);
+    text-decoration: none;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    transition: color 0.2s;
+  }
+  .header-links a:hover { color: var(--accent); }
+
+  /* ── Main layout ── */
+  main {
+    position: relative;
+    z-index: 10;
+    display: grid;
+    grid-template-columns: 1fr 360px;
+    gap: 0;
+    height: calc(100vh - 73px);
+  }
+
+  /* ── Left panel ── */
+  .left {
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--border);
+    overflow: hidden;
+  }
+
+  .input-zone {
+    padding: 28px 32px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg2);
+  }
+
+  .input-label {
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text3);
+    margin-bottom: 10px;
+  }
+
+  .input-wrap {
+    position: relative;
+  }
+
+  textarea {
+    width: 100%;
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    border-radius: 4px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.6;
+    padding: 14px 16px;
+    resize: none;
+    height: 100px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    outline: none;
+  }
+  textarea:focus {
+    border-color: var(--accent2);
+    box-shadow: 0 0 0 2px rgba(0,212,255,0.08);
+  }
+  textarea::placeholder { color: var(--text3); }
+
+  .input-hint {
+    font-size: 10px;
+    color: var(--text3);
+    margin-top: 8px;
+  }
+  .input-hint b { color: var(--text2); }
+
+  .submit-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 12px;
+  }
+
+  button.run {
+    background: var(--accent);
+    color: #000;
+    border: none;
+    border-radius: 3px;
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 9px 20px;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+  }
+  button.run:hover { background: #33ddff; }
+  button.run:active { transform: scale(0.97); }
+  button.run:disabled { background: var(--text3); cursor: not-allowed; }
+
+  button.new-session {
+    background: transparent;
+    border: 1px solid var(--border2);
+    color: var(--text2);
+    border-radius: 3px;
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 8px 14px;
+    cursor: pointer;
+    transition: border-color 0.2s, color 0.2s;
+  }
+  button.new-session:hover { border-color: var(--text2); color: var(--text); }
+
+  .status-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--text3);
+    flex-shrink: 0;
+    transition: background 0.3s;
+  }
+  .status-dot.ready { background: var(--pos); box-shadow: 0 0 6px var(--pos); }
+  .status-dot.loading { background: var(--gold); animation: pulse 0.8s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  /* ── Output zone ── */
+  .output-zone {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px 32px;
+  }
+  .output-zone::-webkit-scrollbar { width: 4px; }
+  .output-zone::-webkit-scrollbar-track { background: transparent; }
+  .output-zone::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  /* ── Exchange cards ── */
+  .exchange {
+    margin-bottom: 28px;
+    animation: fadeIn 0.3s ease;
+  }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
+
+  .exchange-prompt {
+    font-size: 12px;
+    color: var(--text2);
+    margin-bottom: 10px;
+    padding-left: 12px;
+    border-left: 2px solid var(--border2);
+    line-height: 1.5;
+  }
+
+  .exchange-output {
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: 4px;
+    padding: 16px 18px;
+    margin-bottom: 12px;
+  }
+
+  .output-text {
+    font-family: var(--display);
+    font-size: 17px;
+    font-weight: 700;
+    color: #fff;
+    line-height: 1.4;
+    margin-bottom: 8px;
+    letter-spacing: -0.2px;
+  }
+
+  .output-meta {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .meta-pill {
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 2px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text2);
+  }
+  .meta-pill.locked { border-color: var(--gold2); color: var(--gold); }
+  .meta-pill.approximate { border-color: var(--border2); }
+  .meta-pill.primed { border-color: #5544aa; color: #aa99ff; }
+
+  /* ── Candidate bar ── */
+  .candidate-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+  }
+
+  .candidate {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 4px 10px;
+    font-size: 11px;
+    transition: border-color 0.2s;
+  }
+  .candidate:hover { border-color: var(--border2); }
+
+  .cand-word { color: var(--text); }
+  .cand-score {
+    font-size: 10px;
+    color: var(--text3);
+    font-variant-numeric: tabular-nums;
+  }
+  .cand-label {
+    font-size: 9px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 1px 5px;
+    border-radius: 2px;
+    background: rgba(0,212,255,0.08);
+    color: var(--accent2);
+  }
+  .cand-label.answer_cand { background: rgba(0,230,118,0.08); color: var(--pos); }
+  .cand-label.q_only      { background: rgba(255,82,82,0.08);  color: var(--neg); }
+
+  /* ── Per-word viz ── */
+  .perword-viz {
+    margin-top: 14px;
+  }
+  .perword-title {
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text3);
+    margin-bottom: 8px;
+  }
+  .perword-bars {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .pw-word {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    min-width: 36px;
+  }
+  .pw-bar-wrap {
+    width: 28px;
+    height: 40px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+  }
+  .pw-bar {
+    width: 100%;
+    border-radius: 2px 2px 0 0;
+    transition: height 0.4s ease;
+  }
+  .pw-bar.pkt0 { background: linear-gradient(to top, var(--accent2), var(--accent)); }
+  .pw-bar.pkt1 { background: linear-gradient(to top, #5533aa, #9966ff); }
+  .pw-bar.neg  { background: linear-gradient(to top, #993333, var(--neg)); }
+  .pw-label {
+    font-size: 9px;
+    color: var(--text3);
+    text-align: center;
+    max-width: 40px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* ── Empty state ── */
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    text-align: center;
+    padding: 40px;
+    color: var(--text3);
+  }
+  .empty-state .glyph {
+    font-size: 48px;
+    margin-bottom: 16px;
+    opacity: 0.4;
+    font-family: var(--display);
+    font-weight: 800;
+    letter-spacing: -2px;
+  }
+  .empty-state p {
+    font-size: 12px;
+    max-width: 320px;
+    line-height: 1.7;
+  }
+  .example-prompts {
+    margin-top: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    text-align: left;
+  }
+  .example-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    color: var(--text3);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: border-color 0.2s, color 0.2s;
+    text-align: left;
+    line-height: 1.4;
+  }
+  .example-btn:hover { border-color: var(--border2); color: var(--text2); }
+
+  /* ── Right panel ── */
+  .right {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--bg2);
+  }
+
+  .panel-header {
+    padding: 16px 20px 12px;
+    border-bottom: 1px solid var(--border);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text3);
+  }
+
+  .field-state {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .state-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .state-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .state-label {
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text3);
+  }
+
+  .state-value {
+    font-size: 16px;
+    font-weight: 700;
+    font-family: var(--display);
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+  .state-value.accent { color: var(--accent); }
+  .state-value.gold   { color: var(--gold); }
+  .state-value.pos    { color: var(--pos); }
+
+  /* ── Resolution bar ── */
+  .res-bar-wrap {
+    margin: 12px 20px;
+  }
+  .res-bar-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 6px;
+  }
+  .res-bar-track {
+    height: 4px;
+    background: var(--bg3);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .res-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: linear-gradient(to right, var(--accent2), var(--accent));
+    transition: width 0.5s ease;
+  }
+
+  /* ── Named words ── */
+  .named-section {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 20px 20px;
+  }
+  .named-section::-webkit-scrollbar { width: 3px; }
+  .named-section::-webkit-scrollbar-thumb { background: var(--border); }
+
+  .named-title {
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text3);
+    margin-bottom: 10px;
+  }
+
+  .named-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+
+  .named-chip {
+    font-size: 11px;
+    padding: 3px 8px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    color: var(--text2);
+    transition: border-color 0.3s, color 0.3s;
+  }
+  .named-chip.new-word {
+    border-color: var(--gold2);
+    color: var(--gold);
+    animation: chipPop 0.4s ease;
+  }
+  @keyframes chipPop {
+    0%  { transform: scale(0.8); opacity: 0; }
+    60% { transform: scale(1.1); }
+    100%{ transform: scale(1);   opacity: 1; }
+  }
+
+  /* ── Möbius state ── */
+  .mobius-section {
+    padding: 12px 20px;
+    border-top: 1px solid var(--border);
+  }
+  .mobius-face {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 8px;
+  }
+  .face-badge {
+    font-family: var(--display);
+    font-weight: 800;
+    font-size: 14px;
+    letter-spacing: 0.05em;
+    padding: 4px 12px;
+    border-radius: 2px;
+  }
+  .face-badge.INNER {
+    background: rgba(0,212,255,0.1);
+    color: var(--accent);
+    border: 1px solid var(--accent2);
+  }
+  .face-badge.OUTER {
+    background: rgba(240,165,0,0.1);
+    color: var(--gold);
+    border: 1px solid var(--gold2);
+  }
+  .face-desc {
+    font-size: 10px;
+    color: var(--text3);
+    line-height: 1.4;
+  }
+
+  /* ── Scrollbar global ── */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  
+  /* ── Disclaimer modal ── */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(4, 8, 14, 0.92);
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(4px);
+    animation: fadeIn 0.3s ease;
+  }
+  .modal-overlay.hidden { display: none; }
+
+  .modal {
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    max-width: 560px;
+    width: calc(100% - 40px);
+    padding: 36px 40px;
+    position: relative;
+  }
+
+  .modal-eyebrow {
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 12px;
+  }
+
+  .modal h2 {
+    font-family: var(--display);
+    font-size: 22px;
+    font-weight: 800;
+    color: #fff;
+    margin-bottom: 20px;
+    line-height: 1.2;
+    letter-spacing: -0.3px;
+  }
+
+  .modal-blocks {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-bottom: 24px;
+  }
+
+  .modal-block {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+  }
+
+  .modal-block-icon {
+    font-size: 16px;
+    flex-shrink: 0;
+    margin-top: 1px;
+    width: 20px;
+    text-align: center;
+  }
+
+  .modal-block-text {
+    font-size: 12px;
+    color: var(--text2);
+    line-height: 1.65;
+  }
+
+  .modal-block-text b {
+    color: var(--text);
+    font-weight: 700;
+  }
+
+  .modal-stat {
+    display: inline-block;
+    background: rgba(0,212,255,0.08);
+    border: 1px solid var(--border2);
+    border-radius: 2px;
+    padding: 1px 7px;
+    font-size: 11px;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .modal-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 20px 0;
+  }
+
+  .modal-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .modal-footer-text {
+    font-size: 10px;
+    color: var(--text3);
+    line-height: 1.5;
+  }
+
+  .btn-dismiss {
+    background: var(--accent);
+    color: #000;
+    border: none;
+    border-radius: 3px;
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 10px 22px;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.15s;
+  }
+  .btn-dismiss:hover { background: #33ddff; }
+
+  .info-btn {
+    background: transparent;
+    border: 1px solid var(--border2);
+    color: var(--text3);
+    border-radius: 3px;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 5px 10px;
+    cursor: pointer;
+    transition: border-color 0.2s, color 0.2s;
+  }
+  .info-btn:hover { border-color: var(--text2); color: var(--text); }
+
+  /* ── Error toast ── */
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #2a1010;
+    border: 1px solid #663333;
+    color: var(--neg);
+    font-size: 12px;
+    padding: 10px 20px;
+    border-radius: 4px;
+    z-index: 100;
+    transition: transform 0.3s ease;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <div class="modal-eyebrow">Academic Research Demo</div>
+    <h2>This is a geometric field,<br>not a chatbot.</h2>
+
+    <div class="modal-blocks">
+
+      <div class="modal-block">
+        <div class="modal-block-icon">◈</div>
+        <div class="modal-block-text">
+          <b>What this is.</b> GCL is an academic demonstration of a
+          <b>flexoelectric gradient field</b> operating in symbol space.
+          It processes language using only three mathematical constants —
+          π, φ, and a single boundary value — with no training data,
+          no embeddings, and no statistical inference.
+        </div>
+      </div>
+
+      <div class="modal-block">
+        <div class="modal-block-icon">◉</div>
+        <div class="modal-block-text">
+          <b>What the outputs are.</b> The system returns the
+          <b>geometrically highest-charge words</b> from the field's
+          response to your input — not a generated answer.
+          Outputs are semantically correlated because semantic weight
+          is a geometric property, but they are field readouts,
+          not language model responses.
+        </div>
+      </div>
+
+      <div class="modal-block">
+        <div class="modal-block-icon">∂²</div>
+        <div class="modal-block-text">
+          <b>What this demonstrates.</b> Output quality correlates with
+          the <b>gradient</b> of information density across the input
+          <span class="modal-stat">r = 0.91</span>, not with mean
+          density <span class="modal-stat">r = 0.61</span>.
+          This is the signature of a flexoelectric system —
+          polarization proportional to strain gradient, not strain.
+        </div>
+      </div>
+
+      <div class="modal-block">
+        <div class="modal-block-icon">⊘</div>
+        <div class="modal-block-text">
+          <b>What this is not.</b> Semantics and training could be
+          layered on top, but that is not the point. This model exists
+          to show that <b>the gradient mechanism is real and measurable</b>
+          independent of any learned representation.
+        </div>
+      </div>
+
+    </div>
+
+    <div class="modal-divider"></div>
+
+    <div class="modal-footer">
+      <div class="modal-footer-text">
+        For best results: use a rich context sentence followed by a clear question.<br>
+        Press Ctrl+Enter to submit.
+      </div>
+      <button class="btn-dismiss" onclick="dismissModal()">Understood</button>
+    </div>
+  </div>
+</div>
+
+
+<header>
+  <div class="logo">GC<span>L</span></div>
+  <div class="tagline">Geometric Clarity Lab — Flexoelectric Language Field</div>
+  <div class="header-links">
+    <button class="info-btn" onclick="showModal()">About</button>
+    <a href="https://github.com/GCLprimary/GCL-geo_clarity_lab" target="_blank">GitHub</a>
+    <a href="https://twitter.com/SquaredGradient" target="_blank">@SquaredGradient</a>
+  </div>
+</header>
+
+<main>
+  <!-- Left: input + output -->
+  <div class="left">
+    <div class="input-zone">
+      <div class="input-label">Input</div>
+      <div class="input-wrap">
+        <textarea id="prompt" placeholder="Context sentence. Question?" rows="4"></textarea>
+      </div>
+      <div class="input-hint">
+        Format: <b>Context sentence.</b> then <b>Question?</b> — or ask a bare question (uses conversation context).
+      </div>
+      <div class="submit-row">
+        <div class="status-dot" id="status-dot"></div>
+        <button class="run" id="run-btn" onclick="runPrompt()">Process</button>
+        <button class="new-session" onclick="newSession()">New Session</button>
+        <span id="session-label" style="font-size:10px;color:var(--text3);margin-left:4px;"></span>
+      </div>
+    </div>
+
+    <div class="output-zone" id="output-zone">
+      <div class="empty-state" id="empty-state">
+        <div class="glyph">∂²</div>
+        <p>A first-principles flexoelectric gradient field for language processing. No training. No embeddings. Pure geometry.</p>
+        <div class="example-prompts">
+          <button class="example-btn" onclick="useExample(this)">Monarch butterflies use an internal magnetic compass and inherited timing to navigate thousands of miles. How do monarch butterflies navigate such long distances across generations?</button>
+          <button class="example-btn" onclick="useExample(this)">Axolotls can regrow entire limbs and spinal cord segments through the activation of specialized progenitor cells. How do axolotls regenerate lost body parts so effectively?</button>
+          <button class="example-btn" onclick="useExample(this)">Flexoelectric polarization arises from strain gradients in the dielectric medium, coupling curvature to electric field without requiring symmetry breaking. What does the flexoelectric gradient produce in an asymmetric field?</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: field state panel -->
+  <div class="right">
+    <div class="panel-header">Field State</div>
+
+    <div class="field-state">
+      <div class="state-grid">
+        <div class="state-item">
+          <div class="state-label">Resolution</div>
+          <div class="state-value accent" id="s-resolution">—</div>
+        </div>
+        <div class="state-item">
+          <div class="state-label">Polarity</div>
+          <div class="state-value" id="s-polarity">—</div>
+        </div>
+        <div class="state-item">
+          <div class="state-label">Field Stress</div>
+          <div class="state-value" id="s-stress">—</div>
+        </div>
+        <div class="state-item">
+          <div class="state-label">Net Carry</div>
+          <div class="state-value gold" id="s-carry">—</div>
+        </div>
+        <div class="state-item">
+          <div class="state-label">Vocab</div>
+          <div class="state-value" id="s-vocab">—</div>
+        </div>
+        <div class="state-item">
+          <div class="state-label">Named</div>
+          <div class="state-value pos" id="s-named">—</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="res-bar-wrap">
+      <div class="res-bar-label">
+        <span>Field Resolution</span>
+        <span id="s-res-pct">0%</span>
+      </div>
+      <div class="res-bar-track">
+        <div class="res-bar-fill" id="res-bar" style="width:0%"></div>
+      </div>
+    </div>
+
+    <div class="mobius-section">
+      <div class="panel-header" style="padding:0 0 8px; border:none;">Möbius Surface</div>
+      <div class="mobius-face">
+        <div class="face-badge" id="mobius-face">—</div>
+        <div class="face-desc" id="mobius-desc">Awaiting first prompt</div>
+      </div>
+    </div>
+
+    <div class="named-section">
+      <div class="named-title">Named Invariants — <span id="named-count">0</span></div>
+      <div class="named-chips" id="named-chips"></div>
+    </div>
+  </div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+
+// ── Disclaimer modal ──────────────────────────────────────────────────────
+function dismissModal() {
+  document.getElementById('modal-overlay').classList.add('hidden');
+  localStorage.setItem('gcl-disclaimer-seen', '1');
+}
+function showModal() {
+  document.getElementById('modal-overlay').classList.remove('hidden');
+}
+// Only show on first visit
+if (localStorage.getItem('gcl-disclaimer-seen')) {
+  document.getElementById('modal-overlay').classList.add('hidden');
+}
+
+
+// ── State ──────────────────────────────────────────────────────────────────
+let sessionId   = null;
+let knownNamed  = new Set();
+let lastRes     = 0.15;
+// API base — empty string = same origin (works locally and on Railway)
+const API = '';
+
+// ── Session management ─────────────────────────────────────────────────────
+async function initSession() {
+  try {
+    const r = await fetch(`${API}/session/new`, { method: 'POST' });
+    if (!r.ok) throw new Error(await r.text());
+    const d = await r.json();
+    sessionId = d.session_id;
+    const short = sessionId.slice(0, 8);
+    document.getElementById('session-label').textContent = `session ${short}`;
+    document.getElementById('status-dot').className = 'status-dot ready';
+  } catch(e) {
+    showToast(`Could not connect to GCL server: ${e.message}`);
+    document.getElementById('status-dot').className = 'status-dot';
+  }
+}
+
+async function newSession() {
+  if (sessionId) {
+    await fetch(`${API}/session/${sessionId}`, { method: 'DELETE' }).catch(()=>{});
+  }
+  sessionId = null;
+  knownNamed.clear();
+  lastRes = 0.15;
+  document.getElementById('named-chips').innerHTML = '';
+  document.getElementById('named-count').textContent = '0';
+  resetFieldState();
+  await initSession();
+}
+
+// ── Process prompt ─────────────────────────────────────────────────────────
+async function runPrompt() {
+  const prompt = document.getElementById('prompt').value.trim();
+  if (!prompt) return;
+  if (!sessionId) await initSession();
+  if (!sessionId) return;
+
+  const btn = document.getElementById('run-btn');
+  const dot = document.getElementById('status-dot');
+  btn.disabled = true;
+  dot.className = 'status-dot loading';
+
+  try {
+    const r = await fetch(`${API}/session/${sessionId}/process`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt }),
+    });
+
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({ detail: r.statusText }));
+      throw new Error(err.detail || r.statusText);
+    }
+
+    const data = await r.json();
+    renderExchange(prompt, data);
+    updateFieldState(data);
+    updateNamedWords(data.session?.newly_named || []);
+    document.getElementById('prompt').value = '';
+    document.getElementById('empty-state').style.display = 'none';
+
+  } catch(e) {
+    showToast(`Error: ${e.message}`);
+    if (e.message.includes('404') || e.message.includes('expired')) {
+      sessionId = null;
+      await initSession();
+    }
+  } finally {
+    btn.disabled = false;
+    dot.className = 'status-dot ready';
+  }
+}
+
+// ── Render exchange ────────────────────────────────────────────────────────
+function renderExchange(prompt, data) {
+  const zone = document.getElementById('output-zone');
+
+  const geo   = data.geo    || {};
+  const fp    = data.fingerprint || {};
+  const locked = data.parity_locked;
+  const primed = data.was_primed;
+
+  const el = document.createElement('div');
+  el.className = 'exchange';
+
+  // Prompt
+  el.innerHTML = `<div class="exchange-prompt">${escHtml(prompt.slice(0, 200))}</div>`;
+
+  // Output card
+  const card = document.createElement('div');
+  card.className = 'exchange-output';
+
+  // Main text
+  const outText = data.geo_output || '—';
+  card.innerHTML = `<div class="output-text">${escHtml(outText)}</div>`;
+
+  // Meta pills
+  const meta = document.createElement('div');
+  meta.className = 'output-meta';
+
+  meta.innerHTML += `<span class="meta-pill ${locked ? 'locked' : 'approximate'}">${locked ? '⟳ locked' : '~ approx'}</span>`;
+  if (geo.resolution) meta.innerHTML += `<span class="meta-pill">res ${geo.resolution.toFixed(3)}</span>`;
+  if (geo.field_polarity !== undefined) {
+    const pol = geo.field_polarity;
+    meta.innerHTML += `<span class="meta-pill" style="color:${pol>0?'var(--pos)':'var(--neg)'}">${pol>0?'+':''}${pol.toFixed(3)}</span>`;
+  }
+  if (primed) meta.innerHTML += `<span class="meta-pill primed">⊕ primed</span>`;
+  if (data.elapsed_ms) meta.innerHTML += `<span class="meta-pill">${data.elapsed_ms}ms</span>`;
+  card.appendChild(meta);
+
+  // Candidates
+  if (geo.pocket_scores && geo.pocket_scores.length) {
+    const row = document.createElement('div');
+    row.className = 'candidate-row';
+    geo.pocket_scores.slice(0,6).forEach(c => {
+      const labelClass = (c.pocket_label || '').replace(/[^a-z_]/g,'');
+      row.innerHTML += `<div class="candidate">
+        <span class="cand-word">${escHtml(c.word)}</span>
+        <span class="cand-score">${c.score.toFixed(3)}</span>
+        <span class="cand-label ${labelClass}">${(c.pocket_label||'').slice(0,8)}</span>
+      </div>`;
+    });
+    card.appendChild(row);
+  }
+
+  // Per-word bar chart
+  if (fp.per_word && fp.per_word.length > 0) {
+    const viz = document.createElement('div');
+    viz.className = 'perword-viz';
+    viz.innerHTML = `<div class="perword-title">Gradient — |ns| per word</div>`;
+    const bars = document.createElement('div');
+    bars.className = 'perword-bars';
+
+    const maxNs = Math.max(...fp.per_word.map(w => Math.abs(w.net_signed || 0)), 1);
+    fp.per_word.forEach(w => {
+      const absNs = Math.abs(w.net_signed || 0);
+      const h = Math.round((absNs / maxNs) * 38);
+      const pkt = w.pocket || 0;
+      const neg = (w.net_signed || 0) < -0.1;
+      const cls = neg ? 'neg' : (pkt === 0 ? 'pkt0' : 'pkt1');
+      bars.innerHTML += `<div class="pw-word">
+        <div class="pw-bar-wrap">
+          <div class="pw-bar ${cls}" style="height:${h}px" title="${w.word}: ${w.net_signed}"></div>
+        </div>
+        <div class="pw-label">${escHtml((w.word||'').slice(0,6))}</div>
+      </div>`;
+    });
+    viz.appendChild(bars);
+    card.appendChild(viz);
+  }
+
+  el.appendChild(card);
+  zone.insertBefore(el, zone.firstChild);
+}
+
+// ── Update field state panel ───────────────────────────────────────────────
+function updateFieldState(data) {
+  const geo   = data.geo    || {};
+  const fp    = data.fingerprint || {};
+  const field = data.field  || {};
+  const sess  = data.session || {};
+
+  const res = geo.resolution || lastRes;
+  lastRes   = res;
+
+  document.getElementById('s-resolution').textContent = res.toFixed(3);
+  document.getElementById('s-polarity').textContent   = (geo.field_polarity >= 0 ? '+' : '') + (geo.field_polarity || 0).toFixed(3);
+  document.getElementById('s-stress').textContent     = (fp.field_stress || 0).toFixed(4);
+  document.getElementById('s-carry').textContent      = (field.net_carry  || 0).toFixed(3);
+  document.getElementById('s-vocab').textContent      = `${sess.vocab_size||0} (${sess.vocab_stable||0} stable)`;
+  document.getElementById('s-named').textContent      = sess.named_count || 0;
+
+  const resPct = Math.round(res * 100);
+  document.getElementById('res-bar').style.width = `${resPct}%`;
+  document.getElementById('s-res-pct').textContent = `${resPct}%`;
+
+  // Möbius face — infer from field polarity + stress as proxy
+  // (Möbius reader runs server-side, not returned in API yet)
+  // Show gen_mode instead as useful indicator
+  const genMode = field.gen_mode || '';
+  const face = genMode.includes('recognition') ? 'INNER' : 'OUTER';
+  const faceEl = document.getElementById('mobius-face');
+  faceEl.textContent = face;
+  faceEl.className = `face-badge ${face}`;
+  document.getElementById('mobius-desc').textContent =
+    face === 'INNER'
+      ? 'Local causal mechanism — field resolved'
+      : 'Distributed system — field approximating';
+}
+
+function resetFieldState() {
+  ['s-resolution','s-polarity','s-stress','s-carry','s-vocab','s-named']
+    .forEach(id => document.getElementById(id).textContent = '—');
+  document.getElementById('res-bar').style.width = '0%';
+  document.getElementById('s-res-pct').textContent = '0%';
+  document.getElementById('mobius-face').textContent = '—';
+  document.getElementById('mobius-face').className = 'face-badge';
+  document.getElementById('mobius-desc').textContent = 'Awaiting first prompt';
+}
+
+// ── Named words ────────────────────────────────────────────────────────────
+function updateNamedWords(newWords) {
+  const container = document.getElementById('named-chips');
+  const newSet    = new Set(newWords);
+
+  newWords.forEach(w => {
+    if (!knownNamed.has(w)) {
+      knownNamed.add(w);
+      const chip = document.createElement('span');
+      chip.className = 'named-chip new-word';
+      chip.textContent = w;
+      chip.title = 'newly named this prompt';
+      setTimeout(() => chip.classList.remove('new-word'), 2000);
+      container.prepend(chip);
+    }
+  });
+
+  document.getElementById('named-count').textContent = knownNamed.size;
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function useExample(btn) {
+  document.getElementById('prompt').value = btn.textContent.trim();
+  document.getElementById('prompt').focus();
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 4000);
+}
+
+// ── Enter key ─────────────────────────────────────────────────────────────
+document.getElementById('prompt').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) runPrompt();
+});
+
+// ── Boot ──────────────────────────────────────────────────────────────────
+initSession();
+</script>
+</body>
+</html>
