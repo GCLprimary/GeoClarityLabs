@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+venv/
+.venv/
+
+# GCL persistent state — these are machine-specific, don't commit
+field_state.json
+ouro_truth_library.json
+exhaust_memory.json
+session_epoch.txt
+diagnostic_results.json
+*.backup.json
+
+# Diagnostic outputs
+diagnostic_output.txt
+
+# OS
+.DS_Store
+Thumbs.db
