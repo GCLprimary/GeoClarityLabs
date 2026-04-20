@@ -12,7 +12,7 @@ class ClarityRatio:
         self.history = []
         self.current_ratio = 0.0
 
-    def measure(self, width: int, height: int, total_triangles: int, n: int) -> float:
+    def measure(self, width: int, height: int, total_triangles: int, n: int, penalty: float = 1) -> float:
         """
         Compute clarity ratio score based on box dimensions and triangle density.
         Higher = better resolved structure.
@@ -25,7 +25,8 @@ class ClarityRatio:
         
         # Combined clarity ratio score
         score = resolution * (1 + 0.3 * density_factor)
-        
+        score *= penalty
+
         self.history.append(score)
         self.current_ratio = score
         
