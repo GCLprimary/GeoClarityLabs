@@ -9,7 +9,6 @@ import numpy as np
 root = Path(__file__).parent.absolute()
 sys.path.insert(0, str(root))
 
-from core.clarity_ratio    import clarity_ratio
 from core.invariants        import invariants
 from core.ouroboros_engine  import ouroboros_engine
 from core.safeguards        import safeguards
@@ -19,6 +18,8 @@ from utils.symbol_grouping  import symbol_grouping
 from utils.radial_displacer import radial_displacer
 from language.processor     import language_processor
 from language.geometric_output import geometric_output
+from language.output_translator import translate_raw
+from tools.sleep_cycle         import run_sleep_cycle, should_sleep
 from utils.mobius_reader       import mobius_reader
 from wave.generation           import generator
 from core.field_state          import field_state_manager
@@ -85,9 +86,6 @@ def main():
 
     if sg_status["imprinted_groups"] == 0 and not _has_saved_groups:
         print("  [warm-up] Seeding fold line and symbol groups...")
-        from diagnostics.semantic_probe import generate_excitation_sequence, probe_prompt
-        for wp in generate_excitation_sequence(mode="chain", max_prompts=27, chain_length=6):
-            probe_prompt(wp)
         # Need >= 500 ticks to sweep full 2pi and activate all 27 symbol lattice indices.
         # The 512-point Fibonacci lattice has symbol indices spread across [0,512).
         # probe_prompt runs 108 ticks which activates 159 total lattice points but only
@@ -125,6 +123,8 @@ def main():
 
     print("\n  Enter sentences. Commands: vocab | carry | status | groups | quit")
     print()
+
+    _prev_conv_delta = None   # for Δ velocity tracking across prompts
 
     while True:
         try:
@@ -310,7 +310,13 @@ def main():
         if geo:
             locked = "⟳ parity locked" if geo.get("parity_locked") else "~ approximate"
             print(f"\n  ── Geometric Output ({locked}) ──────────────")
-            print(f"  {geometric_output.format_output(geo)}")
+            _cap_str = "  [SVO capped]" if getattr(geometric_output, '_svo_capped', False) else ""
+            _raw_out    = geometric_output.format_output(geo)
+            _translated = translate_raw(
+                _raw_out,
+                fingerprint=result.get("fingerprint"),
+            )
+            print(f"  {_translated}{_cap_str}")
             tr = geo["target_region"]
             print(f"  [polarity {geo['field_polarity']:+.3f} | "
                   f"{tr['side']} [{tr['low']:.1f},{tr['high']:.1f}] | "
@@ -345,6 +351,95 @@ def main():
               f"{result['named_count']} named)  "
               f"t={result['elapsed']}s")
 
+        # ── Pressure + field drive metrics ───────────────────────────────────
+        mob_state = None   # initialize here — populated below in Möbius block
+        if geo:
+            p_mode    = geo.get("pressure_mode",  "")
+            p_delta   = geo.get("pressure_delta",  0.0)
+            g_actual  = geo.get("G_actual",         0.0)
+            g_needed  = geo.get("G_needed",         0.0)
+            p0        = geo.get("P0_current",       0.0)
+            lv_before = geo.get("level_current",    0)
+            lv_after  = geo.get("level_after",      0)
+            flipped   = geo.get("domain_flipped",   False)
+            if p_mode:
+                flip_str = "  ⚡ DOMAIN FLIP" if flipped else ""
+                _settle = result.get("settling_ticks", 0)
+                _q_only = result.get("was_q_only", False)
+                _settle_str = f"  ⟳{_settle}t" if _settle > 0 else ""
+                _qonly_str  = " [Q]" if _q_only else ""
+                print(f"  pressure={p_mode}  G={g_actual:.3f}/need {g_needed:.3f}"
+                      f"  Δ={p_delta:+.3f}  P0={p0:.3f}"
+                      f"  L{lv_before}→L{lv_after}{flip_str}{_settle_str}{_qonly_str}")
+
+        # ── Field drive metrics (G×(1-res), T4×AD attractor, Δ velocity) ──────
+        if mob_state and geo:
+            _PHI        = 1.61803398
+            _AD         = 0.016395102
+            _face       = mob_state.get("face", "OUTER")
+            _conv_delta = mob_state.get("convergence_delta", None)
+            _g_actual   = geo.get("G_actual", 0.0)
+            _res        = fold_line_resonance.get_resolution_score()
+
+            # Metric 1: Field drive = G × (1 - res)
+            # Predicts whether field has headroom to be driven toward φ
+            _drive = round(_g_actual * (1.0 - _res), 4)
+
+            # Metric 2: Predicted attractor = T4_raw × AD
+            # CONFIRMED across sessions 9, 12, 14, 15:
+            #   Convergence Δ = T4_angle × AD exactly
+            # T4 is the warm-field polar phase of the Möbius oscillator.
+            # The attractor is not content-dependent — it's set by the
+            # current oscillator phase BEFORE the prompt is processed.
+            # This means we can predict where the field will land BEFORE
+            # seeing the convergence Δ output.
+            # Predicted Δ = T4_polar × AD = convergence_gap exactly.
+            # Use convergence_delta directly — it already equals T4_polar×AD.
+            _pred_attr = mob_state.get("convergence_delta", None)
+
+            # Near-φ override: G>2.0 AND drive>0.8 on OUTER face
+            # These conditions allow the input to overwhelm the T4 attractor
+            _near_phi = (_face.upper() == "OUTER"
+                         and _g_actual >= 2.0
+                         and _drive >= 0.8)
+
+            # Predicted band around T4×AD attractor
+            # Normal band: ±0.08 around predicted attractor
+            # Near-φ override: 0.001-0.15
+            if _near_phi:
+                _pred_lo, _pred_hi = 0.001, 0.150
+                _pred_label = "near-φ"
+            elif _pred_attr is not None:
+                _band = 0.08
+                _pred_lo = max(0.0, round(_pred_attr - _band, 3))
+                _pred_hi = round(_pred_attr + _band, 3)
+                _pred_label = f"T4×AD"
+            else:
+                _pred_lo, _pred_hi = 0.0, 1.62
+                _pred_label = "unknown"
+
+            # Metric 3: Δ velocity (change from previous prompt)
+            _delta_v_str = ""
+            if _conv_delta is not None:
+                if _prev_conv_delta is not None:
+                    _dv = round(_conv_delta - _prev_conv_delta, 6)
+                    _arrow = "→φ" if _dv < 0 else "←φ"
+                    _delta_v_str = f"  Δv={_dv:+.6f} {_arrow}"
+                _prev_conv_delta = _conv_delta
+
+            # Deviation flag: actual Δ outside predicted band
+            _dev_str = ""
+            if _conv_delta is not None and _pred_attr is not None:
+                if _conv_delta < _pred_lo or _conv_delta > _pred_hi:
+                    _dev_str = "  ⚠ outside T4×AD band"
+
+            # Build predicted attractor string
+            _attr_str = (f"{_pred_label}[{_pred_lo:.3f}-{_pred_hi:.3f}]"
+                         + (f"  T4×AD={_pred_attr:.6f}" if _pred_attr else ""))
+
+            print(f"  drive={_drive:.4f}  predicted={_attr_str}"
+                  f"{_delta_v_str}{_dev_str}")
+
         # ── Möbius surface state ──────────────────────────────────────────────
         mob_state = None
         try:
@@ -361,16 +456,37 @@ def main():
 
         # ── Record exchange in conversation window ────────────────────────────
         try:
+            # Only carry named invariants as conversation context.
+            # Domain-specific candidates (e.g. "plants", "arch") should not
+            # prime future unrelated prompts. Named invariants are
+            # geometrically stable cross-domain words (appearances >= 2).
+            _named_set = set(w.lower() for w in result.get("named_words", []))
+            _all_cands = geo.get("candidates", [])[:8] if geo else []
+            _stable_cands = [w for w in _all_cands if w.lower() in _named_set] or _all_cands[:2]
             field_state_manager.add_exchange(
                 anchor_word = (geo.get("text", "") or "").split()[0] if geo else "",
-                top_words   = geo.get("candidates", [])[:8] if geo else [],
+                top_words   = _stable_cands,
                 net_tension = fp.get("net_tension", 0.0),
                 face        = mob_state.get("face", "unknown") if mob_state else "unknown",
                 output      = geo.get("text", "") if geo else "",
-                candidates  = geo.get("candidates", [])[:8] if geo else [],
+                candidates  = _stable_cands,
             )
         except Exception:
             pass  # non-fatal
+
+        # ── Sleep cycle check ────────────────────────────────────────────────
+        try:
+            # Use live session count + saved baseline for accurate total.
+            # _get_total_prompts() reads from disk (only updated on quit),
+            # so we add the in-session process_count to get the true running total.
+            _saved_total   = field_state_manager._get_total_prompts()
+            _session_count = result.get("process_count", 0)
+            _prompt_count  = _saved_total + _session_count
+            if should_sleep(_prompt_count):
+                _sleep_status = run_sleep_cycle()
+                print(f"  {_sleep_status}")
+        except Exception:
+            pass  # sleep cycle is never fatal
 
         print()
 

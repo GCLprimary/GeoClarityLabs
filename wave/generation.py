@@ -4,15 +4,16 @@ import numpy as np
 from core.clarity_ratio import clarity_ratio
 from core.safeguards import safeguards
 from utils.radial_displacer import radial_displacer
-from core.semantic_layer import semantic_layer
-from utils.fold_line_resonance import fold_line_resonance
+# semantic_layer removed — replaced with inline geometry
+_QUESTION_WORDS = {
+    "how", "what", "why", "when", "where", "which", "who", "whose",
+    "whom", "is", "are", "was", "were", "do", "does", "did", "can",
+    "could", "would", "should", "will",
+}
 
-_CONSENSUS_AGREE    =  0.20
-_CONSENSUS_DIVIDED  = -0.20
-_PERSISTENCE_HIGH   =  0.35
-_EXHAUST_MAX_DIST   =  0.05   # max distance to act on exhaust recall
-_EXHAUST_RES_GUARD  =  0.65   # local resolution above which exhaust recall yields
-_EXHAUST_PKT_GUARD  =  0.30   # pocket confidence above which exhaust recall yields
+_CONSENSUS_AGREE   =  0.20
+_CONSENSUS_DIVIDED = -0.20
+_PERSISTENCE_HIGH  =  0.35
 
 
 def _modulate(answer: str, consensus: float, persistence: float) -> str:
@@ -189,31 +190,12 @@ class AnswerGenerator:
         prompt_lower:   str,
         spin_signal:    float,
         zero_braking:   bool,
-        exhaust_recall: Optional[Dict] = None,
     ) -> str:
 
         is_question = (
             prompt_lower.endswith("?") or
-            any(w in prompt_lower for w in semantic_layer.question_words)
+            any(w in prompt_lower.split() for w in _QUESTION_WORDS)
         )
-
-        # ── Step 0: Exhaust-diagonal recall (local-resolution guard) ──────────
-        # Cross-session geometric fingerprint match. Only fires when the local
-        # field is NOT already strongly resolved — strong local geometry wins.
-        if exhaust_recall is not None:
-            dist         = exhaust_recall.get("distance", 1.0)
-            prior_prompt = exhaust_recall.get("prompt", "")
-            local_res    = fold_line_resonance.get_resolution_score()
-            if (dist < _EXHAUST_MAX_DIST and prior_prompt and
-                    not (local_res >= _EXHAUST_RES_GUARD or
-                         pocket_conf >= _EXHAUST_PKT_GUARD)):
-                cross = _similarity_recall(prior_prompt, tri_data, self.memory_store)
-                if cross:
-                    return cross
-                snippet = prior_prompt[:60].rstrip()
-                return (f"Field geometry matches prior context "
-                        f"(exhaust distance {dist:.4f}): '{snippet}...'")
-            # Local field is strong — fall through to local resolution
 
         # 1. Same-turn memory recall
         if memory_recall and len(memory_recall) > 10 \
@@ -234,7 +216,18 @@ class AnswerGenerator:
             "earlier","remember","previously","last time",
             "you mentioned","i mentioned","as i said","from before"
         }
-        context, _ = semantic_layer._split_context_and_query(prompt)
+        # Preferred: use diagonal structure similarity when available
+        _exhaust_sim = prop_result.get("exhaust_similarity", 0.0)
+        if _exhaust_sim >= 0.75:
+            _recall_src = prop_result.get("exhaust_source", "diagonal")
+            _direction  = prop_result.get("direction", "positive")
+            return (f"Field resolved ({_recall_src} similarity {_exhaust_sim:.2f}). "
+                    f"Direction: {_direction}. "
+                    f"Persistence {persistence:.2f}, consensus {consensus:.2f}.")
+
+        # Fallback: symbol stream overlap recall
+        _q_idx = prompt.find("?")
+        context = prompt[:prompt.rfind(".", 0, _q_idx)].strip() if _q_idx > 0 else ""
         is_memory_reference = any(ref in context.lower() for ref in _MEMORY_REF)
         if not context or is_memory_reference:
             cross = _similarity_recall(prompt, tri_data, self.memory_store)
@@ -259,12 +252,12 @@ class AnswerGenerator:
 
     def generate(
         self,
-        prompt:         str,
-        tri_data:       Dict[str, Any],
-        prop_result:    Dict[str, Any],
-        consensus:      float,
-        memory_recall:  str = "",
-        exhaust_recall: Optional[Dict] = None,
+        prompt:        str,
+        tri_data:      Dict[str, Any],
+        prop_result:   Dict[str, Any],
+        consensus:     float,
+        memory_recall: str = "",
+        exhaust_recall: dict = None,
     ) -> str:
 
         prompt_lower = prompt.lower().strip()
@@ -283,9 +276,8 @@ class AnswerGenerator:
         convergence    = radial["web_convergence_score"]
         num_displacers = radial["num_displacers"]
 
-        _, pocket_conf = semantic_layer.extract_with_pocket_alignment(
-            prompt, tri_data, prop_result
-        )
+        # pocket_conf derived from prop_result boundary data
+        pocket_conf = float(prop_result.get("pocket_confidence", 0.0))
 
         spin_signal  = 0.0
         zero_braking = False
@@ -299,8 +291,7 @@ class AnswerGenerator:
         answer = self._resolve(
             prompt, tri_data, prop_result, consensus, memory_recall,
             convergence, num_displacers, clarity, persistence,
-            pocket_conf, prompt_lower, spin_signal, zero_braking,
-            exhaust_recall=exhaust_recall,
+            pocket_conf, prompt_lower, spin_signal, zero_braking
         )
 
         self._store(tri_data, prompt, answer)
@@ -310,7 +301,6 @@ class AnswerGenerator:
             "Field resolved", "Field processing", "Geometry stable",
             "dual held", "vertical build", "horizontal recognize",
             "Strong geometric boundary", "Geometric boundary plausible",
-            "field geometry matches",
         ])
         if not already_annotated:
             answer = _modulate(answer, consensus, persistence)

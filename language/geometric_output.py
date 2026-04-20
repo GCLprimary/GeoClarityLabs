@@ -17,17 +17,52 @@ from utils.bipolar_lattice import bipolar_lattice
 from utils.fold_line_resonance import fold_line_resonance
 from wave.symbolic_wave import SymbolicWave
 
-_PARITY_THRESHOLD           = 0.35
+_PARITY_THRESHOLD           = 0.381966  # 1/phi² — parity lock threshold
+# Polarization constants — confirmed across 3 sessions, 14 prompts
+_P_MAX   = invariants.P_max   # 3/φ² — dielectric saturation ceiling
+_P0_COLD = invariants.P0_cold  # √φ/φ² — geometric cold floor
+# _PARITY_THRESHOLD / _P_MAX = 1/3 exactly
+# Quantization level midpoint thresholds
+_P_LEVEL_0_MAX = 0.650   # below = L0 cold
+_P_LEVEL_1_MAX = 0.950   # below = L1 activating
+_P_LEVEL_2_MAX = 1.110   # below = L2 warm, above = L3 saturated
 _CONTENT_THRESHOLD          = 1.5
 _ANSWER_CONTENT_THRESHOLD   = 0.8
 _BOUNDARY_CONTENT_THRESHOLD = 0.8
 _NET_TENSION_SCALE          = 8.0
 
 _STRUCTURAL_ANCHORS = {
+    # Core structural (originally present)
     "the", "and", "is", "in", "of", "a", "to", "it", "as",
     "that", "this", "was", "be", "are", "for", "on", "or",
     "from", "by", "at", "an", "not", "but", "so", "if",
     "its", "has", "had", "have", "with", "how", "what",
+    # Temporal/connective — observed in outputs, never content
+    "when", "then", "than", "been", "will", "just", "once",
+    "while", "where", "which", "still", "also", "even",
+    # Pronouns that slip through _PRONOUN_FILTER into score gate
+    "their", "they", "them", "its", "our", "your", "his", "her",
+    # Auxiliary verbs
+    "did", "does", "do", "can", "may", "will", "could", "would",
+    "should", "shall", "might", "must", "let",
+    # Prepositions observed in outputs
+    "into", "onto", "upon", "per", "via",
+    # Connectors and comparators
+    "than", "rather", "each", "every", "both", "such",
+    "while", "since", "once", "even", "just", "also",
+    "only", "more", "most", "very", "well", "still",
+    "yet", "too", "then", "thus", "hence", "though",
+    # Pronouns — never a useful output word
+    "they", "them", "their", "those", "these", "there",
+    "here", "who", "whom", "whose", "where", "which",
+    "he", "she", "we", "you", "him", "her", "our", "your",
+    # Quantifiers and determiners
+    "major", "minor", "previous", "further", "other",
+    "around", "about", "almost", "nearly", "beyond",
+    "against", "between", "among", "across", "along",
+    "whether", "either", "neither", "another", "instead",
+    # Auxiliaries that slip through
+    "might", "shall", "cannot", "could", "would", "should",
 }
 
 _PRONOUN_FILTER = {
@@ -71,6 +106,14 @@ _EXHAUST_MID_THRESHOLD     = 0.02
 class GeometricOutput:
     def __init__(self):
         self._sw = SymbolicWave()
+
+    # Generic fallback verbs that bleed across unrelated prompts.
+    # 'involves' appears in stable vocab with action-range scores
+    # and fires as best verb even when a real fingerprint verb exists.
+    _GENERIC_VERB_BLOCKLIST = {
+        "involves", "involves", "requires", "produces",
+        "contains", "consists", "represents", "indicates",
+    }
 
     _Q_SKIP_VERBS = {
         'how','what','why','where','which','when','who',
@@ -126,7 +169,43 @@ class GeometricOutput:
 
     def _sample_vocabulary(self, target: Dict[str, Any], vocabulary: Any, invariant_engine: Any,
                            fingerprint: Dict[str, Any], n_candidates: int = 8,
-                           target_side: str = "boundary") -> List[Dict[str, Any]]:
+                           target_side: str = "boundary",
+                           pressure_state: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+        # ── Pressure-modulated multiplier ─────────────────────────────────────
+        # Derived from ferroelectric model: pmult scales with pressure deficit.
+        # FOCUS: field needs gradient → boost high-charge candidates
+        # SATURATE: field at ceiling  → normalize to P_max
+        # SUSTAIN: field coasting     → no modification
+        _ps        = pressure_state or {}
+        _ps_mode   = _ps.get("mode", "FOCUS")
+        _ps_delta  = _ps.get("pressure_delta", 0.0)
+        _ps_G_sat  = _ps.get("G_sat", 3.0)
+        _ps_P0     = _ps.get("P0_current", 0.7)
+        _ps_P_MAX  = _ps.get("P_MAX", 1.1459)
+
+        # Mobius face modulates mode: INNER→FOCUS (local/causal), OUTER→SATURATE
+        _mobius_face = _ps.get("mobius_face", "unknown")
+        if _mobius_face == "INNER" and _ps_mode == "SUSTAIN":
+            _ps_mode = "FOCUS"    # INNER face tightens to local resolution
+        elif _mobius_face == "OUTER" and _ps_delta > 0.5:
+            _ps_mode = "SATURATE" # OUTER with excess gradient → push to saturation
+
+        if _ps_mode == "FOCUS" and _ps_delta < 0:
+            _pmult_factor = 1.0 + abs(_ps_delta) / max(_ps_G_sat * 2, 1.0)
+        elif _ps_mode == "SATURATE":
+            _pmult_factor = _ps_P_MAX / max(_ps_P0, invariants.P0_cold)
+        else:
+            _pmult_factor = 1.0
+        _pmult_factor = max(0.5, min(_pmult_factor, 3.0))
+
+        # Diagonal recall pool — words from geometrically similar prior prompt
+        # Only activate when similarity is meaningful (>= 0.65)
+        _recall_sim   = _ps.get("recall_similarity", 0.0)
+        _recall_words = set(
+            w.lower().strip() for w in _ps.get("recall_candidates", [])
+            if w and len(w) > 2
+        ) if _recall_sim >= 0.65 else set()
+        _recall_boost = _recall_sim  # boost weight = similarity score [0.65, 1.0]
         low, high = target["low"], target["high"]
         per_word_list = fingerprint.get("per_word", [])
         context_word_set: Set[str] = set()
@@ -181,7 +260,9 @@ class GeometricOutput:
             thresh = effective_threshold(pmult, target_side)
             in_range = (ns <= high) if plabel == "answer_cand" else (low <= ns <= high)
             if in_range and abs(ns) >= thresh:
-                score = (abs(ns) / 13.0) * pmult
+                score = (abs(ns) / 13.0) * pmult * _pmult_factor
+                if _recall_words and word.lower() in _recall_words:
+                    score *= (1.0 + _recall_boost)
                 candidates.append({
                     "word": word, "net_signed": ns,
                     "source": "load_bearer", "priority": 3,
@@ -209,7 +290,9 @@ class GeometricOutput:
             if _fnet < -0.5 and ns > 0.5: continue
 
             if low <= ns <= high and abs(ns) >= thresh:
-                score = (abs(ns) / 13.0) * pmult
+                score = (abs(ns) / 13.0) * pmult * _pmult_factor
+                if _recall_words and word.lower() in _recall_words:
+                    score *= (1.0 + _recall_boost)
                 candidates.append({
                     "word": word, "net_signed": ns,
                     "source": "named_invariant", "priority": 4,
@@ -225,6 +308,7 @@ class GeometricOutput:
             ns   = entry.get("net_signed", 0.0)
             from_current  = word.lower() in current_words
             sv_epoch      = entry.get("session_epoch", 0)
+            is_named      = invariant_engine.is_named(word)
             pmult, plabel = pocket_multiplier(word, from_current, word_epoch=sv_epoch)
             thresh = effective_threshold(pmult, target_side)
             # Skip library words whose polarity conflicts with field direction
@@ -233,11 +317,25 @@ class GeometricOutput:
             if _fnet < -0.5 and ns > 0.5: continue
 
             if low <= ns <= high and abs(ns) >= thresh:
-                score = (abs(ns) / 13.0) * pmult
+                score = (abs(ns) / 13.0) * pmult * _pmult_factor
+                # Recency decay: words not in the current prompt decay.
+                # Named invariants: gentle decay (×0.7) — they earned their status
+                # but must still fade when context shifts. Prevents 'fire' bleed.
+                # Unnamed stable: stronger decay (×0.5) — same as before.
+                # Both: only applies when word is absent from current fingerprint.
+                if not from_current:
+                    score *= 0.5  # absent from context → decay regardless of named status
+                    # Named invariants ARE the field's memory of significant words,
+                    # but they must still fade when context shifts entirely.
+                    # 0.7 was too gentle — 'fire','ice' kept bleeding across prompts.
+                    # Named words in the CURRENT fingerprint get full weight already
+                    # (from_current=True for those), so this only affects absent ones.
+                if _recall_words and word.lower() in _recall_words:
+                    score *= (1.0 + _recall_boost)
                 candidates.append({
                     "word": word, "net_signed": ns,
                     "source": "stable_vocab", "priority": 1,
-                    "named": invariant_engine.is_named(word),
+                    "named": is_named,
                     "pocket_mult": pmult, "pocket_label": plabel,
                     "score": score,
                 })
@@ -333,11 +431,28 @@ class GeometricOutput:
 
     def _multi_pass_assembly(self, candidates: List[Dict[str, Any]], field: Dict[str, Any],
                              target: Dict[str, Any], vocabulary: Any,
-                             fingerprint: Optional[Dict[str, Any]] = None) -> Tuple[str, str]:
+                             fingerprint: Optional[Dict[str, Any]] = None,
+                             invariant_engine: Any = None) -> Tuple[str, str]:
         if not candidates:
             return ("Field geometry unresolved — no vocabulary in target region.", "fallback")
 
         qtype, q_link = self._detect_question_type(fingerprint)
+
+        # Named word decay: if the anchor/top candidate is a named invariant
+        # but NOT in the current prompt, halve its effective score so it
+        # doesn't dominate assembly for unrelated topics.
+        _fp_words_set = set(
+            w.get("word", "").lower().rstrip(".,!?;:")
+            for w in (fingerprint.get("per_word", []) if fingerprint else [])
+        )
+        _decayed = []
+        for c in candidates:
+            w = c.get("word", "").lower()
+            if c.get("named", False) and w not in _fp_words_set:
+                c = dict(c)
+                c["score"] = c.get("score", 0.0) * 0.5
+            _decayed.append(c)
+        candidates = _decayed
 
         # ── Verb proximity filter (restored from v6) ────────────────────────
         # Apply BEFORE heavy/light split so late-sentence context words
@@ -359,14 +474,23 @@ class GeometricOutput:
         heavy = [c for c in candidates if abs(c.get("net_signed", 0.0)) >= _CONTENT_NS_MIN]
 
         # Layer 2: Connectors — unified filtering (multi-mode)
+        # Recency guard: only include stable words that appear in the current
+        # fingerprint. Words from prior prompts (e.g. 'plants', 'arch') should
+        # not bleed into assembly for unrelated topics.
+        _current_fp_words = set(
+            w.get("word", "").lower().rstrip(".,!?;:")
+            for w in (fingerprint.get("per_word", []) if fingerprint else [])
+        )
         light = []
         if hasattr(vocabulary, "get_stable_words"):
             for entry in vocabulary.get_stable_words():
                 word = entry.get("word", "").lower()
                 if word in _STRUCTURAL_ANCHORS: continue
+                # Skip stable words not present in current prompt
+                if word not in _current_fp_words: continue
                 ns = entry.get("net_signed", 0.0)
                 t = entry.get("mean_tension", 0.0)
-                pmult, plabel = self._pocket_multiplier(word, fingerprint, from_current=False)
+                pmult, plabel = self._pocket_multiplier(word, fingerprint, from_current=True)
                 thresh = self._effective_threshold_for_connector(pmult, field)
                 if 0.1 <= abs(ns) < _CONTENT_NS_MIN and t > 0.08 and abs(ns) >= thresh:
                     light.append({"word": entry.get("word"), "ns": ns, "t": t, "pos": 0.5, "pool": "connector"})
@@ -378,8 +502,155 @@ class GeometricOutput:
             for i, item in enumerate(ordered):
                 item["pos"] = i / max(len(ordered) - 1, 1)
 
+        # Compute question verbs before combiner AND spine — both need them
+        _question_verbs = set()
+        if fingerprint:
+            _QV_ENDINGS = ("s","es","ed","ing","ize","ise","ate","fy","en",
+                           "it","mit","pt","nd","ld","nt")
+            for _qw in fingerprint.get("per_word", []):
+                if _qw.get("pocket", 0) == 1:
+                    _qwl = _qw.get("word","").lower().rstrip(".,!?;:")
+                    if (_qwl not in self._Q_SKIP_VERBS
+                            and _qwl not in _STRUCTURAL_ANCHORS
+                            and _qwl not in self._GENERIC_VERB_BLOCKLIST
+                            and len(_qwl) > 3
+                            and any(_qwl.endswith(e) for e in _QV_ENDINGS)):
+                        _question_verbs.add(_qwl)
+
         # Layer 3: Contextual combiner — now fully outside base frame delta
-        final_words = self._contextual_combiner(ordered, field, fingerprint, qtype, vocabulary)
+        final_words = self._contextual_combiner(ordered, field, fingerprint, qtype, vocabulary,
+                                                question_verbs=_question_verbs)
+
+        # Layer 4: Minimal SVO spine — arrange into Subject-Verb-Object order
+
+        _svo_verb   = next((w for w in final_words if w.get("pool") in ("action","verb")), None)
+        _svo_others = [w for w in final_words if w.get("pool") not in ("action","verb")]
+        if _svo_verb and len(_svo_others) >= 2:
+            _fp_per_word = fingerprint.get("per_word",[]) if fingerprint else []
+
+            # PRIMARY subject signal: word in BOTH pkt=0 AND pkt=1.
+            # Confirmed across all grammatical outputs: the subject always
+            # repeats across pockets. Repetition = topic anchor = subject.
+            _pkt0_words = {
+                w.get("word","").lower().rstrip(".,!?;:")
+                for w in _fp_per_word if w.get("pocket",0) == 0
+                and w.get("word","").lower().rstrip(".,!?;:") not in _STRUCTURAL_ANCHORS
+            }
+            _pkt1_words = {
+                w.get("word","").lower().rstrip(".,!?;:")
+                for w in _fp_per_word if w.get("pocket",0) == 1
+                and w.get("word","").lower().rstrip(".,!?;:") not in _STRUCTURAL_ANCHORS
+            }
+            _both_pockets = _pkt0_words & _pkt1_words
+
+            # FALLBACK rank: named > pkt0 > score
+            _named_set = set()
+            if hasattr(invariant_engine, "get_named_words"):
+                _named_set = {w.lower() for w in invariant_engine.get_named_words()}
+            def _subj_rank(c):
+                wl = c.get("word","").lower()
+                return (1 if wl in _named_set else 0,
+                        1 if wl in _pkt0_words else 0,
+                        c.get("score", 0.0))
+
+            _both_cands = [c for c in _svo_others
+                           if c.get("word","").lower().rstrip(".,!?;:") in _both_pockets]
+            if _both_cands:
+                # Repetition signal — most reliable subject identification
+                _subject = max(_both_cands, key=lambda c: c.get("score", 0.0))
+            else:
+                # No repetition — prefer named invariants in pkt=0 as subject.
+                # For question-only prompts (no boundary), named invariants
+                # are the field's established domain anchors — they identify
+                # the topic more reliably than raw score.
+                _named_pkt0 = [
+                    c for c in _svo_others
+                    if c.get("word","").lower().rstrip(".,!?;:") in _named_set
+                    and c.get("word","").lower().rstrip(".,!?;:") in _pkt0_words
+                    and c.get("word","").lower().rstrip(".,!?;:") not in _STRUCTURAL_ANCHORS
+                ]
+                if _named_pkt0:
+                    # Named invariant in pkt=0 — highest scored wins
+                    _subject = max(_named_pkt0, key=lambda c: c.get("score", 0.0))
+                else:
+                    # Fall back to highest-charged pkt=0 content word
+                    _pkt0_cands = [
+                        c for c in _svo_others
+                        if c.get("word","").lower().rstrip(".,!?;:") in _pkt0_words
+                        and c.get("word","").lower().rstrip(".,!?;:") not in _STRUCTURAL_ANCHORS
+                    ]
+                    if _pkt0_cands:
+                        _subject = max(_pkt0_cands, key=lambda c: c.get("score", 0.0))
+                    else:
+                        _subject = max(_svo_others, key=_subj_rank)
+
+            # Object slot: prefer nouns over verb-form words.
+            # Words from pkt=0 with high charge are domain nouns.
+            # Words that are themselves verbs (in question_verbs or verb-form)
+            # get a score penalty in the object slot.
+            _pure_verb_forms = {"bends","melts","rises","falls","moves",
+                                 "flows","grows","contracts","expands",
+                                 "transmits","produces","creates","forms"}
+            _qv_snap = _question_verbs  # snapshot for closure
+            def _obj_score(c, _qv=_qv_snap):
+                wl  = c.get("word","").lower().rstrip(".,!?;:")
+                sc  = c.get("score", 0.0)
+                # Penalize if this word was used as the verb
+                if _svo_verb and wl == _svo_verb.get("word","").lower().rstrip(".,!?;:"):
+                    return -1.0
+                # Penalize verb-form words in object slot
+                if wl in _pure_verb_forms or wl in _qv:
+                    sc *= 0.4
+                return sc
+            _objects = sorted(
+                [w for w in _svo_others if w is not _subject],
+                key=_obj_score, reverse=True
+            )
+            final_words = [_subject, _svo_verb] + _objects
+
+            # Deduplicate: prevents repeats including inflection variants
+            # (acid/acids, contract/contracts treated as same stem)
+            def _stem(w):
+                wl = w.lower().rstrip(".,!?;:s")  # strip trailing 's' for simple plural
+                return wl
+
+            # Pre-populate seen set with subject and verb to block them
+            # from reappearing in the object slots
+            _seen_stems = set()
+            _subj_wl = _subject.get("word","").lower().rstrip(".,!?;:")
+            _seen_stems.add(_subj_wl)
+            _seen_stems.add(_stem(_subj_wl))
+            if _svo_verb:
+                _verb_wl = _svo_verb.get("word","").lower().rstrip(".,!?;:")
+                _seen_stems.add(_verb_wl)
+                _seen_stems.add(_stem(_verb_wl))
+
+            _deduped = []
+            for w in final_words:
+                wl   = w.get("word","").lower().rstrip(".,!?;:")
+                stem = _stem(wl)
+                if stem not in _seen_stems:
+                    _deduped.append(w)
+                    _seen_stems.add(stem)
+                    _seen_stems.add(wl)
+            final_words = _deduped
+
+            # Word cap: calibrated by verb confidence
+            # Question verb (3x boost) = high confidence → cap at 3 words S+V+O
+            # Fallback verb = lower confidence → allow up to 4 words for richness
+            # 'Vaccines protect learns' stays 3. 'Dna contain chemical sequences' stays 4.
+            _verb_word  = _svo_verb.get("word","").lower().rstrip(".,!?;:") if _svo_verb else ""
+            _q_verb_hit = _verb_word in _question_verbs
+            if len(final_words) >= 5 and _q_verb_hit:
+                final_words = [_subject, _svo_verb] + ([_deduped[2]] if len(_deduped) > 2 else [])
+                self._svo_capped = True
+            elif len(final_words) > 4 and not _q_verb_hit:
+                final_words = _deduped[:4]
+                self._svo_capped = False
+            else:
+                self._svo_capped = False
+        else:
+            self._svo_capped = False
 
         # Final articulation — detect anchor from pkt=1 subject
         # The first non-skip word in pkt=1 after question words is the subject
@@ -389,7 +660,15 @@ class GeometricOutput:
                      if w.get("pocket", 0) == 1]
             _skip = {'how','why','what','where','when','which','who',
                      'do','does','did','is','are','was','were','will',
-                     'would','can','could','should','may','might','be'}
+                     'would','can','could','should','may','might','be',
+                     # Structural articles, prepositions, conjunctions
+                     'a','an','the','in','of','to','at','by','as','on',
+                     'or','if','it','its','and','but','not','so','for',
+                     'from','with','that','this','than','then','into',
+                     # Additional words that produce bad conjugations as anchors
+                     'rather','each','every','these','those','both','such',
+                     'while','since','once','even','just','also','only',
+                     'more','most','very','well','still','yet','too'}
             for _w in _pkt1:
                 _wl = _w.get("word","").lower().rstrip("?!.,;:")
                 if _wl and _wl not in _skip:
@@ -412,7 +691,8 @@ class GeometricOutput:
 
     def _contextual_combiner(self, ordered: List[Dict], field: Dict[str, Any],
                              fingerprint: Optional[Dict[str, Any]], qtype: str,
-                             vocabulary: Any) -> List[Dict]:
+                             vocabulary: Any,
+                             question_verbs: Optional[set] = None) -> List[Dict]:
         """Method 1 Contextual combiner — fully outside base frame delta.
         Verb selection uses the exact same geometric scoring and multi-mode pool.
         Insertion position is now determined solely by field snapshot (carry_sign + polarity)
@@ -426,6 +706,14 @@ class GeometricOutput:
         carry_sign = field.get("carry_sign", 0)
 
         # Build verb pool (multi-mode: prompt + library)
+        # Recency filter: stable vocab verbs only eligible if they appear
+        # in the CURRENT fingerprint. 'involves' persists in stable vocab
+        # from prior sessions but must not fire on unrelated prompts.
+        _current_fp_word_set = set()
+        if fingerprint:
+            for _fw in fingerprint.get("per_word", []):
+                _current_fp_word_set.add(_fw.get("word","").lower().rstrip(".,!?;:"))
+
         verb_pool = []
         if fingerprint:
             for w in fingerprint.get("per_word", []):
@@ -439,31 +727,64 @@ class GeometricOutput:
                 wl = entry.get("word", "").lower()
                 ns = entry.get("net_signed", 0.0)
                 t = entry.get("mean_tension", 0.0)
+                # Only include stable vocab verbs present in current prompt
+                if wl not in _current_fp_word_set:
+                    continue
                 if _ACTION_NS_MIN <= abs(ns) <= _ACTION_NS_MAX and t > _ACTION_T_MIN:
                     verb_pool.append({"word": entry.get("word"), "ns": ns, "t": t})
 
         # Score verbs geometrically (unchanged)
         scored_verbs = []
         for v in verb_pool:
+            vw = v.get("word","").lower().rstrip(".,!?;:")
+            if vw in self._GENERIC_VERB_BLOCKLIST:
+                continue  # never use generic fallback verbs from stable vocab
             score = (v["t"] * abs(v["ns"])) * resolution * (1.0 + abs(polarity)) * (1.0 + abs(carry))
+            # Question verb boost: 3× if it appeared explicitly in the question
+            if question_verbs and vw in question_verbs:
+                score *= 3.0
             scored_verbs.append((score, v["word"]))
 
-        # Threshold lowered: 0.65*res was too high (~0.47) for most real scores
-        # which average ~0.15-0.20. Now uses 0.12*res as the floor.
-        threshold = max(0.04, 0.12 * resolution)
+        # Threshold grounded in geometry from coupling experiments:
+        # floor = AD (asymmetric delta = phi/100 ≈ 0.01640)
+        # slope = phi/10 ≈ 0.1618 (one order below phi)
+        # Both derive from the same constant driving the field.
+        # Previous: max(0.04, 0.12*res) — empirically tuned
+        _PHI = 1.61803399  # (1+sqrt(5))/2
+        _AD  = invariants.asymmetric_delta  # 2π/3 - 2.078
+        threshold = max(_AD, (_PHI / 10.0) * resolution)
         scored_verbs.sort(reverse=True)
         best_verb = None
         if scored_verbs and scored_verbs[0][0] > threshold:
             best_verb = scored_verbs[0][1]
 
-        # Fallback if needed
+        # Fallback if needed — prefer a real verb from the fingerprint
+        # over a hardcoded generic word that bleeds across prompts.
+        # Scan pkt=1 words for the highest-tension word that reads as a verb
+        # (ends in common verb suffixes or appears in known action patterns).
         if not best_verb:
-            if qtype == "causal":
+            _VERB_ENDINGS = ("s","es","ed","ing","ize","ise","ate","fy","en")
+            _fp_verbs = []
+            if fingerprint:
+                for w in fingerprint.get("per_word", []):
+                    if w.get("pocket", 0) == 1:
+                        wl = w.get("word","").lower().rstrip(".,!?;:")
+                        t  = abs(w.get("mean_tension", 0.0))
+                        ns = abs(w.get("net_signed", 0.0))
+                        if (any(wl.endswith(e) for e in _VERB_ENDINGS)
+                                and wl not in self._Q_SKIP_VERBS
+                                and wl not in _STRUCTURAL_ANCHORS
+                                and ns < 3.0 and t > 0.05):
+                            _fp_verbs.append((t * ns, wl))
+            if _fp_verbs:
+                _fp_verbs.sort(reverse=True)
+                best_verb = _fp_verbs[0][1]
+            elif qtype == "causal":
                 best_verb = "causes"
             elif qtype == "process":
-                best_verb = "through"
+                best_verb = "produces"
             else:
-                best_verb = "involves"
+                best_verb = "requires"
 
         # Insertion: purely field-driven (outside base frame delta)
         result = ordered[:]
@@ -530,7 +851,7 @@ class GeometricOutput:
     _QTYPE_DEFAULT_VERB = {
         "process": "uses",
         "causal":  "causes",
-        "entity":  "involves",
+        "entity":  "contains",   # 'involves' was bleeding; 'contains' is neutral
         "spatial": "exists in",
         "select":  "selects",
     }
@@ -549,9 +870,24 @@ class GeometricOutput:
 
         question_verb = self._extract_question_verb(per_word, anchor_word)
         if not question_verb:
-            question_verb = self._QTYPE_DEFAULT_VERB.get(qtype, "involves")
+            question_verb = self._QTYPE_DEFAULT_VERB.get(qtype, "contains")
 
-        conj = self._conjugate(question_verb, anchor_word)
+        # Noun guard: if anchor_word is a content noun from the fingerprint,
+        # don't conjugate it — it's the SUBJECT, not the verb.
+        # Nouns have non-zero net_signed charge in per_word.
+        # Conjugating a noun produces 'myelins', 'oxidations', 'evolutions' etc.
+        _anchor_lower = anchor_word.lower().rstrip(".,!?;:")
+        _known_nouns = {
+            w.get("word", "").lower().rstrip(".,!?;:")
+            for w in per_word
+            if abs(w.get("net_signed", 0.0)) > 0.5
+            and w.get("word", "").lower().rstrip(".,!?;:") not in _STRUCTURAL_ANCHORS
+        }
+        if _anchor_lower in _known_nouns:
+            # Anchor is a noun — use verb as-is, don't conjugate anchor
+            conj = question_verb
+        else:
+            conj = self._conjugate(question_verb, anchor_word)
 
         anchor_clean = anchor_word.rstrip(".!?,;:").lower()
         if words and words[0].lower().rstrip(".!?,;:") == anchor_clean.split()[0]:
@@ -628,20 +964,155 @@ class GeometricOutput:
         return float(alignment), alignment >= _PARITY_THRESHOLD
 
     def generate(self, fingerprint: Dict[str, Any], vocabulary: Any, invariant_engine: Any,
-                 consensus: float, persistence: float) -> Dict[str, Any]:
+                 consensus: float, persistence: float,
+                 pressure_state: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         field = self._read_field(fingerprint=fingerprint)
         field["persistence"] = persistence
         target = self._identify_target_region(field)
-        candidates = self._sample_vocabulary(target, vocabulary, invariant_engine, fingerprint, target_side=target["side"])
-        text, template = self._multi_pass_assembly(candidates, field, target, vocabulary, fingerprint=fingerprint)
+        candidates = self._sample_vocabulary(
+            target, vocabulary, invariant_engine, fingerprint,
+            target_side=target["side"], pressure_state=pressure_state
+        )
+        # ── Question-only: geometric library query ───────────────────────────
+        # When pkt=0 is empty or minimal (question-only prompt), the normal
+        # candidate pool only draws from the question words themselves.
+        # Instead of faking context, query the library geometrically:
+        # find words whose group/tension signature matches the question's
+        # own geometric fingerprint. These are the library's best answer
+        # to "what is geometrically related to this question?"
+        _fp_pkt0_count = len([w for w in (fingerprint.get("per_word",[]) if fingerprint else [])
+                              if w.get("pocket",0) == 0])
+        _fp_pkt1_count = len([w for w in (fingerprint.get("per_word",[]) if fingerprint else [])
+                              if w.get("pocket",0) == 1])
+        # Question-only: pkt=1 is empty (no pocket split) OR very sparse.
+        # With per-word scoring, pure questions have pkt=1=0 because there's
+        # no boundary to push words into pkt=1. Use full fingerprint as query.
+        _is_q_only_gen = _fp_pkt1_count == 0 or (_fp_pkt0_count <= 3 and _fp_pkt1_count <= 2)
+
+        if _is_q_only_gen and fingerprint and hasattr(vocabulary, "get_stable_words"):
+            # Use ALL per_word as query — full question fingerprint
+            _q_per_word = fingerprint.get("per_word",[])
+            if _q_per_word:
+                _q_groups   = {w.get("dominant_group", w.get("grp",-1))
+                               for w in _q_per_word}
+                _q_mean_t   = sum(abs(w.get("mean_tension",0)) for w in _q_per_word) / len(_q_per_word)
+                _q_mean_ns  = sum(abs(w.get("net_signed",0)) for w in _q_per_word) / len(_q_per_word)
+
+                # Words in the current question fingerprint — exclude from library
+                _q_word_set = {w.get("word","").lower().rstrip(".,!?;:")
+                               for w in _q_per_word}
+
+                # Score every library word by geometric proximity to question
+                _lib_candidates = []
+                for entry in vocabulary.get_stable_words():
+                    wl = entry.get("word","").lower()
+                    if wl in _STRUCTURAL_ANCHORS: continue
+                    if len(wl) < 3: continue
+                    # Skip words already in the question — they're already candidates
+                    if wl in _q_word_set: continue
+                    # Only use words with sufficient appearance history (stability)
+                    # Session-fresh words have inflated tension — skip them
+                    if entry.get("appearances", 0) < 3: continue
+                    _grp  = entry.get("dominant_group", -1)
+                    _t    = abs(entry.get("mean_tension", 0.0))
+                    _ns   = abs(entry.get("net_signed", 0.0))
+                    # BOUNDED ORBIT DISTANCE METRIC
+                    # From Ouroboros: S_{k+1} = {x | |f^k(x)+δ| < r_resonant}
+                    # A library word is a candidate if its orbit position
+                    # is within r_resonant of the question's orbit position.
+                    #
+                    # r_resonant = 1/φ² = _PARITY_THRESHOLD = 0.381966
+                    # This is the system's own convergence radius — the
+                    # same constant used in polarity/pressure thresholding.
+                    _NS_SCALE   = 6.0     # normalize ns to [-1, 1] range
+                    _GRP_SCALE  = 17.0    # normalize group to [0, 1]
+                    _R_RESONANT = 0.381966  # 1/φ² — parity threshold
+
+                    # 1. Euclidean orbit distance in normalized field space
+                    _dt  = abs(_t - _q_mean_t)
+                    _dns = abs(_ns / _NS_SCALE - _q_mean_ns / _NS_SCALE)
+                    _dg  = abs(_grp / _GRP_SCALE - (_q_grp_mean := (
+                        sum(_q_groups) / max(len(_q_groups), 1)) / _GRP_SCALE)) * 0.5
+                    _orbit_dist  = (_dt**2 + _dns**2 + _dg**2) ** 0.5
+                    _orbit_score = math.exp(-_orbit_dist / _R_RESONANT)
+
+                    # 2. Cosine trajectory similarity (direction in t,ns space)
+                    # Words on same trajectory have same tension/charge ratio.
+                    # Negative-charge words (opposite orbit) score 0.
+                    _dot  = _t * _q_mean_t + (_ns/_NS_SCALE) * (_q_mean_ns/_NS_SCALE)
+                    _mag1 = (_t**2 + (_ns/_NS_SCALE)**2) ** 0.5
+                    _mag2 = (_q_mean_t**2 + (_q_mean_ns/_NS_SCALE)**2) ** 0.5
+                    _cos_score = max(0.0, _dot / max(_mag1 * _mag2, 1e-8))
+
+                    # 3. Group resonance bonus (same symbol group = same resonance)
+                    _q_grp_int = round(sum(_q_groups) / max(len(_q_groups), 1))
+                    _grp_bonus = (0.2 if _grp == _q_grp_int
+                                  else 0.1 if abs(_grp - _q_grp_int) <= 2 else 0.0)
+
+                    # Combined bounded orbit score
+                    _lib_score = (_orbit_score * 0.5
+                                  + _cos_score  * 0.3
+                                  + _grp_bonus  * 0.2)
+                    if _lib_score > 0.3:
+                        _lib_candidates.append({
+                            "word":       entry.get("word", wl),
+                            "net_signed": _ns,
+                            "source":     "library_query",
+                            "priority":   2,
+                            "named":      entry.get("appearances",0) >= 2,
+                            "pocket_mult": 1.0,
+                            "pocket_label": "lib_q",
+                            "score":      _lib_score,
+                        })
+
+                # Add top library matches to candidate pool
+                _lib_candidates.sort(key=lambda c: c["score"], reverse=True)
+                candidates = candidates + _lib_candidates[:8]
+
+        # ── Score-gated output quality filter ────────────────────────────────
+        # Only pass candidates above a resolution-scaled threshold to assembly.
+        # Cold field (res≈0.15): threshold≈0.35 — liberal, field needs words.
+        # Warm field (res≈0.80): threshold≈0.45 — selective, prune low-signal.
+        # This stops the assembly padding output with geometrically weak words
+        # that dilute the high-quality candidates selected first.
+        _res_now   = field.get("resolution", 0.15)
+        _score_floor = max(0.35, 0.35 + (_res_now - 0.5) * 0.3)
+        _gated = [c for c in candidates if c.get("score", 0.0) >= _score_floor]
+        # Also remove structural anchors that slipped through scoring
+        # (e.g. 'these','must','adds' can score above floor but must never be output)
+        _gated = [c for c in _gated
+                  if c.get("word", "").lower().rstrip(".,!?;:") not in _STRUCTURAL_ANCHORS]
+        # Always keep at least top 2 — assembly needs minimum words
+        if len(_gated) < 2:
+            _gated = sorted(
+                [c for c in candidates
+                 if c.get("word","").lower().rstrip(".,!?;:") not in _STRUCTURAL_ANCHORS],
+                key=lambda c: c.get("score", 0.0), reverse=True
+            )[:2]
+        candidates_for_assembly = _gated
+
+        text, template = self._multi_pass_assembly(candidates_for_assembly, field, target, vocabulary, fingerprint=fingerprint, invariant_engine=invariant_engine)
         carry_sign = field["carry_sign"]
         alignment, locked = self._verify_parity(text, carry_sign)
-        if locked and field["resolution"] >= 0.7:
+        # Threshold lowered 0.7→0.3: experiments confirmed polarization
+        # is correct even at resolution=0.15 (cold start).
+        # Resolution and polarization are orthogonal axes.
+        if locked and field["resolution"] >= 0.3:
             confidence = "high"
         elif alignment >= 0.0:
             confidence = "medium"
         else:
             confidence = "low"
+
+        # Polarization level after this prompt
+        ps = pressure_state or {}
+        top_score = max((c.get("score", 0.0) for c in candidates), default=0.0)
+        if top_score < 0.650:   level_after = 0
+        elif top_score < 0.950: level_after = 1
+        elif top_score < 1.110: level_after = 2
+        else:                   level_after = 3
+        domain_flipped = (level_after != ps.get("level_current", level_after))
+
         return {
             "text":           text,
             "parity_locked":  locked,
@@ -649,10 +1120,19 @@ class GeometricOutput:
             "template":       template,
             "field_polarity": round(field["polarity"], 4),
             "target_region":  target,
-            "candidates":     [c["word"] for c in candidates],
+            "candidates":     [c["word"] for c in candidates_for_assembly],
             "pocket_scores":  [{"word": c["word"], "pocket_mult": c.get("pocket_mult", 1.0), "pocket_label": c.get("pocket_label", "?"), "score": round(c.get("score", 0.0), 4)} for c in candidates[:6]],
             "confidence":     confidence,
             "resolution":     field["resolution"],
+            # ── Pressure state report ─────────────────────────────────
+            "pressure_mode":  ps.get("mode", "UNKNOWN"),
+            "pressure_delta": ps.get("pressure_delta", 0.0),
+            "G_actual":       ps.get("G_actual", 0.0),
+            "G_needed":       ps.get("G_needed", 0.0),
+            "P0_current":     ps.get("P0_current", 0.0),
+            "level_current":  ps.get("level_current", 0),
+            "level_after":    level_after,
+            "domain_flipped": domain_flipped,
         }
 
     def format_output(self, result: Dict[str, Any]) -> str:

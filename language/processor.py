@@ -44,9 +44,9 @@ from utils.fold_line_resonance import fold_line_resonance
 from utils.symbol_grouping import symbol_grouping, symbol_to_signed
 from utils.bipolar_lattice import bipolar_lattice
 from utils.diagonal_structure import diagonal_structure_generator
-from core.clarity_ratio import clarity_ratio
 from core.invariants import invariants
 from core.ouroboros_engine import ouroboros_engine
+from core.field_state import field_state_manager
 from observer.observer import MultiObserver
 from wave.generation import generator
 from language.invariant_engine import invariant_engine
@@ -251,31 +251,95 @@ class LanguageProcessor:
         raw_breaks      = stream_ctx.get("_zero_breaks_raw", [])
         raw_pockets     = stream_ctx.get("_pockets_raw", [])
 
+        # ── Per-word geometric pocket scoring ─────────────────────────────────
+        # Each word receives a pocket assignment based on its own geometry.
+        # The statement/question boundary (if present) acts as a soft prior
+        # rather than a hard gate — high-charge words override position.
+        #
+        # Structural groups: carry function words, pull toward neutral
+        _STRUCTURAL_GROUPS = {5, 3, 11}  # question words, prepositions, articles
+        # Content threshold: words above this geo_score are context-bearing
+        _GEO_THRESHOLD = 0.8  # tuned to separate content from function words
+
+        # Find boundary position for soft prior (same logic as before)
         split_sym_idx = len(symbol_stream)  # default: no split
+        _has_boundary = False
         if raw_breaks and raw_pockets:
-            # Find the pocket that is exactly '0' (sentence boundary marker)
             for pi, pocket_text in enumerate(raw_pockets):
                 if pocket_text == '0' and pi > 0 and (pi - 1) < len(raw_breaks):
                     split_sym_idx = raw_breaks[pi - 1]
+                    _has_boundary = True
                     break
-            else:
-                # Fallback: last break before any '?' pocket
+            if not _has_boundary:
                 for pi, pocket_text in enumerate(raw_pockets):
                     if '?' in pocket_text and pi > 0 and (pi - 1) < len(raw_breaks):
                         split_sym_idx = raw_breaks[pi - 1]
+                        _has_boundary = True
                         break
         elif zero_boundaries:
             split_sym_idx = zero_boundaries[-2] if len(zero_boundaries) >= 2 else zero_boundaries[-1]
-        per_word_dicts  = []
-        sym_cursor      = 0
+            _has_boundary = True
+
+        # Function words: always pkt=1 regardless of score
+        _FUNC_WORDS = {
+            'how','what','why','where','when','which','who',
+            'do','does','did','is','are','was','were',
+            'the','a','an','to','from','by','at','of','on',
+            'or','and','but','so','if','it','its','that','this',
+            'than','then','into','for','with','as','not','no',
+        }
+
+        # Get named invariants for this session
+        _named_set = set()
+        try:
+            from language.invariant_engine import invariant_engine as _inv_eng
+            _named_set = {w.lower() for w in _inv_eng.get_named_words()}
+        except Exception:
+            pass
+
+        per_word_dicts = []
+        sym_cursor     = 0
         for wfp in word_fps:
-            d             = wfp.to_dict()
-            # Use full word length (chars including punctuation) as stream advance.
-            # Each char maps to exactly one stream position, so this keeps sym_cursor
-            # on the same scale as split_sym_idx from zero_breaks (full stream index).
-            full_word_len = len(wfp.word)
-            d["pocket"]   = 0 if (sym_cursor + full_word_len // 2) < split_sym_idx else 1
-            sym_cursor   += full_word_len + 1   # +1 for inter-word space
+            d = wfp.to_dict()
+            full_word_len  = len(wfp.word)
+            _word_midpoint = sym_cursor + full_word_len // 2
+            _wl  = wfp.word.lower().rstrip(".,!?;:")
+            _t   = abs(wfp.mean_tension)
+            _ns  = abs(wfp.net_signed)
+            _grp = wfp.dominant_group
+            _geo = _t * _ns   # raw geometric score
+
+            # THREE-SIGNAL POCKET ASSIGNMENT:
+            #
+            # SIGNAL 1 — Named invariant → pkt=0 ONLY if before boundary.
+            # If named AND after boundary → pkt=1 (it's in the question).
+            # This preserves subject-from-repetition: a named word that
+            # appears in BOTH halves needs both copies to reflect their
+            # actual positions so the intersection signal fires correctly.
+            _before_bnd = (not _has_boundary) or (_word_midpoint < split_sym_idx)
+            if _wl in _named_set and _before_bnd:
+                d["pocket"] = 0
+            elif _wl in _named_set and not _before_bnd:
+                d["pocket"] = 1  # named but in question half → pkt=1
+
+            # SIGNAL 2 — Function word → always pkt=1 (structural/query word)
+            # These words carry syntax, not domain geometry.
+            elif _wl in _FUNC_WORDS or (_grp in _STRUCTURAL_GROUPS and _ns < 1.5):
+                d["pocket"] = 1
+
+            # SIGNAL 3 — Geometric score with positional prior
+            # High geo (>0.05): content-bearing → pkt=0
+            # Low geo + before boundary: positional override → pkt=0 (content)
+            # Low geo + after boundary: query side → pkt=1
+            # Low geo + no boundary: pkt=1 (insufficient signal)
+            elif _geo >= 0.05:
+                d["pocket"] = 0   # geometrically active content word
+            elif _has_boundary and _word_midpoint < split_sym_idx:
+                d["pocket"] = 0   # low-charge but in context position → pkt=0
+            else:
+                d["pocket"] = 1   # low-charge, query side or no boundary
+
+            sym_cursor += full_word_len + 1
             per_word_dicts.append(d)
 
         context_groups:  set = set()
@@ -350,10 +414,7 @@ class LanguageProcessor:
         linked_wave = bipolar_lattice.band_emit_and_core_propagate(tri_data)
         wave_amp    = float(np.mean(np.abs(linked_wave)))
 
-        clarity_ratio.measure(
-            tri_data["width"], tri_data["height"],
-            tri_data["total_triangles"], tri_data["n_original"]
-        )
+        # clarity_ratio.measure() removed — value never read downstream
 
         # ── Exhaust -> diagonal structure -> nearest recall ───────────────────
         exhaust_recall: Optional[Dict] = None
@@ -362,6 +423,8 @@ class LanguageProcessor:
 
         if exhaust_sig.sum() > 1e-10:
             # Generate diagonal structure for this sentence and store in session
+            # geo_result not yet computed here — candidates from prior geo
+            # will be attached after geo_result is produced (see below)
             current_structure = diagonal_structure_generator.generate(
                 exhaust_signature = exhaust_sig,
                 ring_net_phase    = ring_phase,
@@ -387,28 +450,36 @@ class LanguageProcessor:
                 cross_dist   = cross_matches[0]["distance"]
                 if session_dist <= cross_dist:
                     best_match = {
-                        "prompt":   session_matches[0]["prompt"],
-                        "distance": session_dist,
-                        "source":   "session_diagonal",
+                        "prompt":            session_matches[0]["prompt"],
+                        "distance":          session_dist,
+                        "similarity":        session_matches[0]["similarity"],
+                        "source":            "session_diagonal",
+                        "recall_candidates": session_matches[0].get("candidates", []),
                     }
                 else:
                     best_match = {
-                        "prompt":   cross_matches[0]["prompt"],
-                        "distance": cross_dist,
-                        "source":   "cross_session_exhaust",
+                        "prompt":            cross_matches[0]["prompt"],
+                        "distance":          cross_dist,
+                        "similarity":        1.0 - cross_dist,
+                        "source":            "cross_session_exhaust",
+                        "recall_candidates": [],
                     }
             elif session_matches:
                 sim = session_matches[0]["similarity"]
                 best_match = {
-                    "prompt":   session_matches[0]["prompt"],
-                    "distance": 1.0 - sim,
-                    "source":   "session_diagonal",
+                    "prompt":            session_matches[0]["prompt"],
+                    "distance":          1.0 - sim,
+                    "similarity":        sim,
+                    "source":            "session_diagonal",
+                    "recall_candidates": session_matches[0].get("candidates", []),
                 }
             elif cross_matches:
                 best_match = {
-                    "prompt":   cross_matches[0]["prompt"],
-                    "distance": cross_matches[0]["distance"],
-                    "source":   "cross_session_exhaust",
+                    "prompt":            cross_matches[0]["prompt"],
+                    "distance":          cross_matches[0]["distance"],
+                    "similarity":        1.0 - cross_matches[0]["distance"],
+                    "source":            "cross_session_exhaust",
+                    "recall_candidates": [],
                 }
 
             exhaust_recall = best_match   # may be None if no history yet
@@ -481,10 +552,20 @@ class LanguageProcessor:
             linked_vib, prompt=sentence, iterations=10, prop_result=prop_result
         )
 
+        # Enrich prop_result with exhaust similarity for generation.py recall
+        _prop_enriched = dict(prop_result)
+        _prop_enriched["exhaust_similarity"] = (
+            exhaust_recall.get("similarity", 0.0) if exhaust_recall else 0.0
+        )
+        _prop_enriched["exhaust_source"]  = (
+            exhaust_recall.get("source", "") if exhaust_recall else ""
+        )
+        _prop_enriched["direction"] = fingerprint.get("direction", "positive")
+
         base_answer = generator.generate(
             prompt=sentence,
             tri_data=tri_data,
-            prop_result=prop_result,
+            prop_result=_prop_enriched,
             consensus=consensus,
             exhaust_recall=exhaust_recall,
         )
@@ -497,12 +578,72 @@ class LanguageProcessor:
             vocab_hits=vocab_hits,
         )
 
+        # ── Pressure state computation (ferroelectric model) ─────────────────
+        _pkt0_words = [w for w in fingerprint.get("per_word", []) if w.get("pocket", 0) == 0]
+        _pkt1_words = [w for w in fingerprint.get("per_word", []) if w.get("pocket", 0) == 1]
+        _ns0 = [abs(w.get("net_signed", 0.0)) for w in _pkt0_words]
+        _G_actual = (
+            sum(abs(_ns0[i+1] - _ns0[i]) for i in range(len(_ns0) - 1)) / max(len(_ns0) - 1, 1)
+            if len(_ns0) > 1 else 0.0
+        )
+        _res_now = fold_line_resonance.get_resolution_score()
+        pressure_state = field_state_manager.compute_pressure_state(
+            resolution=_res_now,
+            G_actual=_G_actual,
+            pkt0_count=len(_pkt0_words),
+            pkt1_count=len(_pkt1_words),
+        )
+        # Enrich pressure_state with diagonal recall and mobius face
+        if exhaust_recall:
+            _sim   = exhaust_recall.get("similarity", 0.0)
+            _rcand = exhaust_recall.get("recall_candidates", [])
+            pressure_state["recall_similarity"]  = round(_sim, 4)
+            pressure_state["recall_candidates"]  = _rcand
+        else:
+            pressure_state["recall_similarity"]  = 0.0
+            pressure_state["recall_candidates"]  = []
+        # Mobius face from conversation window (most recent exchange)
+        _conv = field_state_manager.get_conversation_window()
+        _face = _conv[-1].get("face", "unknown") if _conv else "unknown"
+        pressure_state["mobius_face"] = _face
+
+        # ── Field-driven settling pass (BEFORE output generation) ──────────────
+        # The settling pass fires BEFORE geo_result so the warmed field state
+        # is available when candidates are scored. Previously it fired after,
+        # which meant ticks helped the NEXT prompt but not the current one.
+        _G_needed   = pressure_state.get("G_needed", 0.0)
+        _is_q_only  = len(_pkt0_words) <= 2
+        _G_deficit  = max(0.0, _G_needed - _G_actual)
+        _AD         = invariants.asymmetric_delta
+        _needs_pass = _is_q_only or _G_deficit > 0.5
+
+        if _needs_pass and _G_deficit > 0.01:
+            _max_ticks = 61
+            _frac  = min(1.0, _G_deficit / max(_G_needed, 0.1))
+            _extra = min(round(_frac * _max_ticks), _max_ticks)
+            if _extra > 0:
+                _settle_amp = wave_amp * (1.0 - (_extra / 61.0))
+                for _ in range(_extra):
+                    fold_line_resonance.tick(external_wave_amp=_settle_amp * _AD)
+                # Re-read resolution after settling — field has warmed
+                _res_now = fold_line_resonance.get_resolution_score()
+                pressure_state["resolution"]     = _res_now
+                pressure_state["settling_ticks"] = _extra
+                pressure_state["was_q_only"]     = _is_q_only
+            else:
+                pressure_state["settling_ticks"] = 0
+                pressure_state["was_q_only"]     = _is_q_only
+        else:
+            pressure_state["settling_ticks"] = 0
+            pressure_state["was_q_only"]     = _is_q_only
+
         geo_result = geometric_output.generate(
             fingerprint=fingerprint,
             vocabulary=self.vocabulary,
             invariant_engine=invariant_engine,
             consensus=consensus,
             persistence=prop_result.get("persistence", 0.0),
+            pressure_state=pressure_state,
         )
 
         # ── Iterative geometric decode ────────────────────────────────────────
@@ -595,6 +736,13 @@ class LanguageProcessor:
                     session_epoch=self._session_epoch,
                 )
 
+        # Store geo candidates in the diagonal structure for future recall
+        # This closes the loop: diagonal geometry → candidate recall
+        if exhaust_sig.sum() > 1e-10:
+            _geo_cands = geo_result.get("candidates", [])[:6] if geo_result else []
+            if _geo_cands and diagonal_structure_generator.structures:
+                diagonal_structure_generator.structures[-1].candidates = _geo_cands
+
         # Etch exhaust and truth library
         bipolar_lattice.etch_exhaust(
             prompt=sentence,
@@ -642,6 +790,8 @@ class LanguageProcessor:
             "vocab_size":      self.vocabulary.size(),
             "vocab_stable":    self.vocabulary.stable_count(),
             "named_count":     len(invariant_engine.named_invariants),
+            "settling_ticks":  pressure_state.get("settling_ticks", 0),
+            "was_q_only":      pressure_state.get("was_q_only", False),
             "newly_named":     newly_named,
             "was_primed":      _was_primed,
             "context_words":   _context_words,
@@ -653,7 +803,9 @@ class LanguageProcessor:
             "carry_injected":  round(carry_injected, 4),
             "carry_alignment": alignment,
             "net_carry":       round(relational_tension.get_current_carry(), 4),
-            "exhaust_recall":  exhaust_recall,
+            "exhaust_recall":     exhaust_recall,
+            "exhaust_similarity": exhaust_recall.get("similarity", 0.0) if exhaust_recall else 0.0,
+            "exhaust_source":     exhaust_recall.get("source", "") if exhaust_recall else "",
             "elapsed":         round(elapsed, 3),
         }
 

@@ -1,5 +1,6 @@
 import math
 from typing import Dict, Any, List
+from core.invariants import invariants
 
 # ── Letter → ring position mapping ───────────────────────────────────────────
 # 27 positions: '0' at position 0, A-Z at positions 1-26.
@@ -84,6 +85,21 @@ _LETTER_WEIGHT: Dict[str, float] = {
 
 
 class SymbolicWave:
+    # Tick padding constants — derived from system geometry
+    # N_WORD_PAD:   '0' ticks between each word segment (φ rounded = 2)
+    #               Gives the lattice a zero-crossing breath between words.
+    # N_POCKET_PAD: DYNAMIC — computed per prompt at triangulation time.
+    #               Base = round(n_pkt0_words / φ) scaled by charge density.
+    #               Formula: round((n_words / φ) × (mean_charge / 4.0))
+    #               where mean_charge = mean |ns| of pkt0 symbols (0-13 scale).
+    #               Low-charge prompt (mean=1.5): fewer zeros needed.
+    #               High-charge prompt (mean=4.0): more zeros needed.
+    #               Self-scales: field uses own signal density to calibrate drain.
+    N_WORD_PAD   = 2    # φ rounded — per-word boundary breathing room
+    # N_POCKET_PAD is computed dynamically in triangulate() — see _pocket_pad()
+    _PHI         = 1.61803398
+    _AD          = invariants.asymmetric_delta
+
     """
     Overhauled 27-Symbol Embedder - Tighter, more powerful front-end.
     0 is now a true dynamic reset/pocket/delimiter for long contexts.
@@ -113,6 +129,10 @@ class SymbolicWave:
             # Digits, punctuation, unknown — treat as zero dynamism
             return '0'
         return _RING_POS_TO_SYM[pos]
+
+    def get_weight(self, c: str) -> float:
+        """Return the geometric weight for a character."""
+        return _LETTER_WEIGHT.get(c.lower(), 0.5)
 
     def _insert_pockets(self, text: str) -> List[str]:
         """FORCE hard 0 phase-shift between context and query."""
@@ -154,6 +174,42 @@ class SymbolicWave:
             segments.append(current.strip())
         return segments
 
+    def _pocket_pad(self, pkt0_symbols: list) -> int:
+        """
+        Compute dynamic pocket boundary padding from pkt0 symbol charge density.
+
+        Formula: round((n_words / φ) × (mean_charge / 4.0))
+          n_words     = rough word count (pkt0 symbol count / avg_word_len≈5)
+          mean_charge = mean |signed value| of pkt0 symbols on 0-13 scale
+          φ           = golden ratio (scaling constant)
+          4.0         = neutral charge midpoint (mid of 0-13 range)
+
+        This means:
+          Low-charge input  (mean≈1.5) → fewer zeros, less drain needed
+          High-charge input (mean≈4.0) → more zeros, stronger imprint needs more settling
+          Scales with length so short prompts aren't over-drained.
+
+        Minimum: 2 (always some settling)
+        Maximum: 20 (cap to prevent over-drain on very long dense prompts)
+        """
+        if not pkt0_symbols:
+            return 2
+        # Symbol to signed magnitude (0=0, A-M=1-13, N-Z=1-13)
+        _charges = []
+        for s in pkt0_symbols:
+            if s == '0':
+                continue
+            if 'A' <= s <= 'M':
+                _charges.append(ord(s) - ord('A') + 1)
+            elif 'N' <= s <= 'Z':
+                _charges.append(ord(s) - ord('N') + 1)
+        if not _charges:
+            return 2
+        mean_charge = sum(_charges) / len(_charges)
+        n_words = max(1, len(pkt0_symbols) // 5)  # rough word count
+        n_pad = round((n_words / self._PHI) * (mean_charge / 4.0))
+        return max(2, min(n_pad, 20))
+
     def triangulate(self, sequence: List[int] or str) -> Dict[str, Any]:
         if isinstance(sequence, str):
             text = sequence
@@ -164,11 +220,39 @@ class SymbolicWave:
         symbol_stream = []
         zero_breaks = []
 
+        # Identify the pocket boundary (context/question split) — it's the pocket
+        # that contains the '0' character inserted by _insert_pockets at the '?'
+        # boundary. Everything before it is pkt=0, everything after is pkt=1.
+        _boundary_idx = None
+        for _i, _p in enumerate(pockets):
+            if '0' in _p and _i < len(pockets) - 1:
+                _boundary_idx = _i
+                break
+
         for i, pocket in enumerate(pockets):
             pocket_symbols = [self._token_to_27_symbol(c) for c in pocket if c]
-            symbol_stream.extend(pocket_symbols)
+
+            # Per-word padding: insert N_WORD_PAD '0' ticks after each word-length
+            # segment within pkt=0. Words are separated by spaces — each pocket
+            # segment already corresponds roughly to a word or short phrase.
+            # We insert the breathing room at segment boundaries.
+            if self.N_WORD_PAD > 0 and i < (_boundary_idx or len(pockets)):
+                # Add word-boundary zeros after each non-boundary pocket
+                symbol_stream.extend(pocket_symbols)
+                if i < len(pockets) - 1 and i != _boundary_idx:
+                    symbol_stream.extend(['0'] * self.N_WORD_PAD)
+            else:
+                symbol_stream.extend(pocket_symbols)
+
             if i < len(pockets) - 1:
-                symbol_stream.append('0')
+                # At the pocket boundary: insert dynamic padding zeros
+                if i == _boundary_idx:
+                    # Collect pkt0 symbols seen so far for charge calculation
+                    _pkt0_syms = [s for s in symbol_stream if s != '0']
+                    _n_pad = self._pocket_pad(_pkt0_syms)
+                    if _n_pad > 0:
+                        symbol_stream.extend(['0'] * _n_pad)
+                symbol_stream.append('0')  # original single separator
                 zero_breaks.append(len(symbol_stream) - 1)
 
         n = len(symbol_stream)
@@ -199,6 +283,45 @@ class SymbolicWave:
             "symbol_stream": symbol_stream
         }
         return result
+
+    def triangulate_raw(self, sequence: str) -> Dict[str, Any]:
+        """
+        Raw symbol triangulation — no pocket insertion, no zero-breaks.
+
+        Maps every character directly to the 27-symbol alphabet and
+        builds the box geometry from the flat stream. No boundary
+        detection, no context/query splitting, no injected zeros.
+
+        Use this for pure symbol testing — measuring what individual
+        letters and sequences do to the field without structural
+        boundary interference. Pocket confidence will read 0.0
+        (correct — no boundary geometry exists in raw input).
+
+        Spaces map to '0' per the standard character mapping.
+        """
+        symbol_stream = [self._token_to_27_symbol(c) for c in sequence if c]
+
+        n          = len(symbol_stream)
+        n_adjusted = n + (4 - n % 4) if n % 4 != 0 else n
+        width      = max(1, math.ceil(math.sqrt(n_adjusted)))
+        height     = math.ceil(n_adjusted / width)
+        total_triangles = 2 * (n_adjusted // 4)
+
+        return {
+            "sequence":          symbol_stream,
+            "n_original":        n,
+            "n_adjusted":        n_adjusted,
+            "is_padded":         n != n_adjusted,
+            "width":             width,
+            "height":            height,
+            "total_triangles":   total_triangles,
+            "square_count":      n_adjusted // 4,
+            "box_area":          width * height,
+            "triangulation_type":"raw_flat",
+            "pockets":           [sequence],   # whole input as single pocket
+            "zero_breaks":       [],           # none — no boundary geometry
+            "symbol_stream":     symbol_stream,
+        }
 
     def get_box_summary(self, sequence: List[int] or str) -> str:
         data = self.triangulate(sequence)

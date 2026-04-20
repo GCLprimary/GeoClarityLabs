@@ -94,30 +94,55 @@ class ConversationField:
 
         Returns (primed_sentence, was_primed, context_words_used)
 
-        If the conversation window is empty or too thin, returns the
-        original sentence unchanged with was_primed=False.
-        The caller can still process the original — it just won't have
-        a rich pkt=0 field to select from.
+        Two-path priming strategy:
+        1. CONTEXTUAL PATH — question overlaps with recent window topics.
+           Use window context words. Good for follow-up questions like
+           "Why does it do that?" or "What about neurons?"
+        2. REFLECTIVE PATH — question is a fresh topic with no window overlap.
+           Reflect the question's own high-charge nouns into pkt=0.
+           "How does supply and demand set prices?" →
+           pkt=0 = "supply demand prices." pkt=1 = the question.
+           This gives the field a real pkt=0/pkt=1 split without
+           contaminating it with irrelevant prior context.
         """
         window = field_state_manager.get_conversation_window()
 
-        if len(window) < _MIN_WINDOW_ENTRIES:
-            return sentence, False, []
+        # Extract content words from the question
+        q_words = [
+            w.lower().rstrip('?!.,;:')
+            for w in sentence.split()
+            if w.lower().rstrip('?!.,;:') not in _STRUCTURAL
+            and len(w.rstrip('?!.,;:')) > 3
+        ]
 
-        # Collect context words from recent exchanges, most recent first
-        context_words = self._collect_context_words(window, sentence)
+        # Check topical overlap with conversation window
+        window_words = set()
+        if window:
+            for exchange in window[-4:]:  # last 4 exchanges
+                anchor = exchange.get("anchor","").lower()
+                if anchor:
+                    window_words.add(anchor)
+                for w in exchange.get("top_words",[]):
+                    window_words.add(w.lower().rstrip('.,!?;:'))
 
-        if not context_words:
-            return sentence, False, []
+        overlap = sum(1 for w in q_words if w in window_words)
+        overlap_ratio = overlap / max(len(q_words), 1)
 
-        # Build a minimal context sentence from the words
-        # Format: "[word1] [word2] ... [wordN]." — a factual noun phrase
-        # The period is essential — it creates the '0' boundary in
-        # _insert_pockets() that produces the pocket split
-        context_sentence = " ".join(context_words) + "."
+        # CONTEXTUAL PATH: significant overlap → use window context
+        # Threshold 0.4: at least 2 of 5 question words must match window
+        # to be considered a genuine follow-up, not a fresh topic.
+        if overlap_ratio >= 0.40 and len(window) >= _MIN_WINDOW_ENTRIES:
+            context_words = self._collect_context_words(window, sentence)
+            if context_words:
+                context_sentence = " ".join(context_words) + "."
+                primed = f"{context_sentence} {sentence}"
+                return primed, True, context_words
 
-        primed = f"{context_sentence} {sentence}"
-        return primed, True, context_words
+        # FRESH TOPIC: no overlap with window — do not prime at all.
+        # The geometric library query in the output pipeline handles
+        # candidate enrichment for question-only prompts properly.
+        # Fake context contaminated the field. Clean question is better.
+        return sentence, False, []
 
     # ── Context word collection ───────────────────────────────────────────────
 

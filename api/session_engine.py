@@ -23,6 +23,7 @@ import threading
 import uuid
 from typing import Dict, Any, Optional
 from dataclasses import dataclass, field
+from language.output_translator import translate_raw
 
 
 # Session timeout — discard idle sessions after this many seconds
@@ -131,7 +132,10 @@ def _shape_response(raw: Dict[str, Any], session: GCLSession) -> Dict[str, Any]:
 
     return {
         # ── Core answer ───────────────────────────────────────────────────────
-        "geo_output":    geo.get("text", ""),
+        "geo_output":    translate_raw(
+            geo.get("text", ""),
+            fingerprint=raw.get("fingerprint"),
+        ),
         "parity_locked": geo.get("parity_locked", False),
         "answer":        raw.get("answer", ""),
         "was_primed":    raw.get("was_primed", False),
@@ -161,10 +165,22 @@ def _shape_response(raw: Dict[str, Any], session: GCLSession) -> Dict[str, Any]:
 
         # ── Session field state ───────────────────────────────────────────────
         "field": {
-            "consensus":   round(raw.get("consensus",   0.0), 4),
-            "persistence": round(raw.get("persistence", 0.0), 4),
-            "gen_mode":    raw.get("gen_mode",    ""),
-            "net_carry":   round(raw.get("net_carry",   0.0), 4),
+            "consensus":      round(raw.get("consensus",   0.0), 4),
+            "persistence":    round(raw.get("persistence", 0.0), 4),
+            "gen_mode":       raw.get("gen_mode",    ""),
+            "net_carry":      round(raw.get("net_carry",   0.0), 4),
+            "carry_alignment":round(raw.get("carry_alignment", 0.0), 4),
+            "carry_injected": round(raw.get("carry_injected",  0.0), 4),
+            "settling_ticks": geo.get("settling_ticks", 0),
+            # Pressure state — ferroelectric model
+            "pressure_mode":  geo.get("pressure_mode",  "UNKNOWN"),
+            "pressure_delta": round(geo.get("pressure_delta", 0.0), 4),
+            "G_actual":       round(geo.get("G_actual",       0.0), 4),
+            "G_needed":       round(geo.get("G_needed",       0.0), 4),
+            "P0_current":     round(geo.get("P0_current",     0.0), 4),
+            "level_current":  geo.get("level_current",  0),
+            "level_after":    geo.get("level_after",    0),
+            "domain_flipped": geo.get("domain_flipped", False),
         },
 
         # ── Session accumulation (grows over conversation) ────────────────────
@@ -177,4 +193,7 @@ def _shape_response(raw: Dict[str, Any], session: GCLSession) -> Dict[str, Any]:
         },
 
         "elapsed_ms": round(raw.get("elapsed", 0.0) * 1000, 1),
+
+        # ── Möbius surface state ──────────────────────────────────────────────
+        "mobius": raw.get("mobius_state", {}),
     }

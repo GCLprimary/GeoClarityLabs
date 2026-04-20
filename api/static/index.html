@@ -2,28 +2,30 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23080c0f'/><text x='16' y='22' font-size='18' text-anchor='middle' fill='%2300d4aa' font-family='monospace' font-weight='bold'>G</text></svg>">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>GCL — Geometric Clarity Lab</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;1,300&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg:        #080b0f;
-    --bg2:       #0d1117;
-    --bg3:       #131920;
-    --border:    #1e2d3d;
-    --border2:   #243447;
-    --accent:    #00d4ff;
-    --accent2:   #0099cc;
-    --gold:      #f0a500;
-    --gold2:     #c88400;
-    --pos:       #00e676;
-    --neg:       #ff5252;
-    --text:      #c8d8e8;
-    --text2:     #7a99b8;
-    --text3:     #3d5a7a;
-    --mono:      'Space Mono', monospace;
-    --display:   'Syne', sans-serif;
+    --bg:        #010507;
+    --bg2:       #040c10;
+    --bg3:       #071014;
+    --border:    #132028;
+    --border2:   #1e3040;
+    --accent:    #00ffcc;
+    --accent2:   #00bbee;
+    --accent3:   #a88fff;
+    --text:      #f0f8fc;
+    --text2:     #7ab8cc;
+    --text3:     #243642;
+    --gold:      #ffcc44;
+    --danger:    #ff2244;
+    --mono:      'IBM Plex Mono', monospace;
+    --sans:      'IBM Plex Sans', sans-serif;
+    --r:         8px;
+    --r2:        4px;
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -31,1140 +33,1117 @@
   body {
     background: var(--bg);
     color: var(--text);
-    font-family: var(--mono);
-    font-size: 13px;
-    line-height: 1.6;
+    font-family: var(--sans);
     min-height: 100vh;
-    overflow-x: hidden;
-  }
-
-  /* ── Background grid ── */
-  body::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background-image:
-      linear-gradient(var(--border) 1px, transparent 1px),
-      linear-gradient(90deg, var(--border) 1px, transparent 1px);
-    background-size: 40px 40px;
-    opacity: 0.3;
-    pointer-events: none;
-    z-index: 0;
+    display: flex;
+    flex-direction: column;
   }
 
   /* ── Header ── */
   header {
-    position: relative;
-    z-index: 10;
-    padding: 28px 40px 20px;
-    border-bottom: 1px solid var(--border);
     display: flex;
-    align-items: flex-end;
-    gap: 24px;
-    background: linear-gradient(to bottom, #0a1018, transparent);
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border2);
+    background: rgba(4,12,16,0.97);
+    backdrop-filter: blur(12px);
+    position: sticky;
+    top: 0;
+    z-index: 100;
   }
 
   .logo {
-    font-family: var(--display);
-    font-size: 26px;
-    font-weight: 800;
-    letter-spacing: -0.5px;
-    color: #fff;
-  }
-  .logo span { color: var(--accent); }
-
-  .tagline {
-    font-size: 11px;
-    color: var(--text3);
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    padding-bottom: 3px;
-  }
-
-  .header-links {
-    margin-left: auto;
     display: flex;
-    gap: 16px;
-    align-items: center;
-    padding-bottom: 2px;
-  }
-  .header-links a {
-    color: var(--text3);
-    text-decoration: none;
-    font-size: 11px;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    transition: color 0.2s;
-  }
-  .header-links a:hover { color: var(--accent); }
-
-  /* ── Main layout ── */
-  main {
-    position: relative;
-    z-index: 10;
-    display: grid;
-    grid-template-columns: 1fr 360px;
-    gap: 0;
-    height: calc(100vh - 73px);
+    align-items: baseline;
+    gap: 10px;
   }
 
-  /* ── Left panel ── */
-  .left {
-    display: flex;
-    flex-direction: column;
-    border-right: 1px solid var(--border);
-    overflow: hidden;
+  .logo-name {
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: #ffffff;
   }
 
-  .input-zone {
-    padding: 28px 32px 20px;
-    border-bottom: 1px solid var(--border);
-    background: var(--bg2);
-  }
-
-  .input-label {
+  .logo-tag {
+    font-family: var(--mono);
     font-size: 10px;
+    color: var(--accent);
     letter-spacing: 0.12em;
     text-transform: uppercase;
-    color: var(--text3);
-    margin-bottom: 10px;
+    background: rgba(0,212,170,0.08);
+    border: 1px solid rgba(0,212,170,0.2);
+    padding: 2px 7px;
+    border-radius: 20px;
   }
 
+  nav {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+  }
+
+  nav a {
+    color: var(--text2);
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 6px 12px;
+    border-radius: var(--r2);
+    transition: color 0.15s, background 0.15s;
+    letter-spacing: 0.02em;
+  }
+
+  nav a:hover {
+    color: var(--text);
+    background: var(--bg3);
+  }
+
+  nav a.github {
+    border: 1px solid var(--border2);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  /* ── Hero ── */
+  .hero {
+    padding: 48px 24px 32px;
+    text-align: center;
+    max-width: 680px;
+    margin: 0 auto;
+    width: 100%;
+  }
+
+  .hero h1 {
+    font-size: clamp(26px, 4.5vw, 38px);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    margin-bottom: 14px;
+    color: #ffffff;
+  }
+
+  .hero h1 span {
+    background: linear-gradient(120deg, var(--accent) 0%, var(--accent2) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .hero p {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--text2);
+    line-height: 1.7;
+    max-width: 520px;
+    margin: 0 auto;
+  }
+
+  .constants {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: 20px;
+  }
+
+  .const-badge {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--gold);
+    background: rgba(240,192,96,0.07);
+    border: 1px solid rgba(240,192,96,0.18);
+    padding: 4px 10px;
+    border-radius: 20px;
+    letter-spacing: 0.04em;
+  }
+
+  /* ── Main ── */
+  main {
+    flex: 1;
+    max-width: 760px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 0 16px 48px;
+  }
+
+  /* ── Input ── */
   .input-wrap {
     position: relative;
+    margin-bottom: 20px;
   }
 
   textarea {
     width: 100%;
-    background: var(--bg3);
-    border: 1px solid var(--border2);
-    border-radius: 4px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
     color: var(--text);
     font-family: var(--mono);
-    font-size: 13px;
+    font-size: 14px;
     line-height: 1.6;
-    padding: 14px 16px;
+    padding: 16px 16px 48px;
     resize: none;
-    height: 100px;
-    transition: border-color 0.2s, box-shadow 0.2s;
     outline: none;
+    transition: border-color 0.2s;
+    min-height: 100px;
   }
-  textarea:focus {
-    border-color: var(--accent2);
-    box-shadow: 0 0 0 2px rgba(0,212,255,0.08);
-  }
-  textarea::placeholder { color: var(--text3); }
 
-  .input-hint {
-    font-size: 10px;
+  textarea::placeholder {
     color: var(--text3);
-    margin-top: 8px;
   }
-  .input-hint b { color: var(--text2); }
 
-  .submit-row {
+  textarea:focus {
+    border-color: var(--border2);
+  }
+
+  .input-footer {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
     display: flex;
     align-items: center;
-    gap: 12px;
-    margin-top: 12px;
+    justify-content: space-between;
+    padding: 8px 12px;
+    border-top: 1px solid var(--border);
   }
 
-  button.run {
+  .char-count {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text3);
+  }
+
+  .send-btn {
     background: var(--accent);
     color: #000;
     border: none;
-    border-radius: 3px;
-    font-family: var(--mono);
-    font-size: 12px;
+    border-radius: var(--r2);
+    font-family: var(--sans);
+    font-size: 13px;
     font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    padding: 9px 20px;
+    padding: 7px 18px;
     cursor: pointer;
-    transition: background 0.15s, transform 0.1s;
+    transition: opacity 0.15s, transform 0.1s;
+    letter-spacing: 0.03em;
+    display: flex;
+    align-items: center;
+    gap: 6px;
   }
-  button.run:hover { background: #33ddff; }
-  button.run:active { transform: scale(0.97); }
-  button.run:disabled { background: var(--text3); cursor: not-allowed; }
 
-  button.new-session {
-    background: transparent;
-    border: 1px solid var(--border2);
-    color: var(--text2);
-    border-radius: 3px;
-    font-family: var(--mono);
-    font-size: 11px;
-    padding: 8px 14px;
-    cursor: pointer;
-    transition: border-color 0.2s, color 0.2s;
-  }
-  button.new-session:hover { border-color: var(--text2); color: var(--text); }
+  .send-btn:hover { opacity: 0.85; }
+  .send-btn:active { transform: scale(0.97); }
+  .send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-  .status-dot {
-    width: 7px; height: 7px;
+  .send-btn .spinner {
+    width: 12px;
+    height: 12px;
+    border: 2px solid rgba(0,0,0,0.3);
+    border-top-color: #000;
     border-radius: 50%;
-    background: var(--text3);
-    flex-shrink: 0;
-    transition: background 0.3s;
-  }
-  .status-dot.ready { background: var(--pos); box-shadow: 0 0 6px var(--pos); }
-  .status-dot.loading { background: var(--gold); animation: pulse 0.8s infinite; }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
-
-  /* ── Output zone ── */
-  .output-zone {
-    flex: 1;
-    overflow-y: auto;
-    padding: 24px 32px;
-  }
-  .output-zone::-webkit-scrollbar { width: 4px; }
-  .output-zone::-webkit-scrollbar-track { background: transparent; }
-  .output-zone::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
-
-  /* ── Exchange cards ── */
-  .exchange {
-    margin-bottom: 28px;
-    animation: fadeIn 0.3s ease;
-  }
-  @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
-
-  .exchange-prompt {
-    font-size: 12px;
-    color: var(--text2);
-    margin-bottom: 10px;
-    padding-left: 12px;
-    border-left: 2px solid var(--border2);
-    line-height: 1.5;
+    animation: spin 0.7s linear infinite;
+    display: none;
   }
 
-  .exchange-output {
-    background: var(--bg2);
-    border: 1px solid var(--border2);
-    border-radius: 4px;
-    padding: 16px 18px;
-    margin-bottom: 12px;
-  }
+  .send-btn.loading .spinner { display: block; }
+  .send-btn.loading .btn-text { display: none; }
 
-  .output-text {
-    font-family: var(--display);
-    font-size: 17px;
-    font-weight: 700;
-    color: #fff;
-    line-height: 1.4;
-    margin-bottom: 8px;
-    letter-spacing: -0.2px;
-  }
+  @keyframes spin { to { transform: rotate(360deg); } }
 
-  .output-meta {
+  /* ── Session bar ── */
+  .session-bar {
     display: flex;
     gap: 16px;
+    align-items: center;
+    padding: 10px 14px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    margin-bottom: 20px;
     flex-wrap: wrap;
   }
 
-  .meta-pill {
+  .session-stat {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+
+  .session-stat .label {
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .session-stat .value {
+    color: var(--accent);
+    font-weight: 500;
+  }
+
+  .session-stat .value.warm {
+    color: var(--gold);
+  }
+
+  .session-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--text3);
+    flex-shrink: 0;
+  }
+
+  .session-dot.live {
+    background: var(--accent);
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  /* ── Output cards ── */
+  .output-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .output-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    overflow: hidden;
+    animation: fadeUp 0.3s ease;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .card-prompt {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text2);
+    line-height: 1.5;
+    background: var(--bg3);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .card-answer {
+    padding: 20px 16px 16px;
+  }
+
+  .answer-text {
+    font-size: clamp(18px, 3.5vw, 24px);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: #ffffff;
+    line-height: 1.3;
+    margin-bottom: 12px;
+    min-height: 32px;
+  }
+
+  .answer-text.empty {
+    color: var(--text3);
+    font-size: 15px;
+    font-weight: 400;
+    font-family: var(--mono);
+    font-style: italic;
+  }
+
+  .answer-meta {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+
+  .meta-chip {
+    font-family: var(--mono);
     font-size: 10px;
     letter-spacing: 0.06em;
     text-transform: uppercase;
     padding: 3px 8px;
-    border-radius: 2px;
+    border-radius: 20px;
+  }
+
+  .meta-chip.locked {
+    color: var(--accent);
+    background: rgba(0,212,170,0.08);
+    border: 1px solid rgba(0,212,170,0.2);
+  }
+
+  .meta-chip.approx {
+    color: var(--gold);
+    background: rgba(240,192,96,0.08);
+    border: 1px solid rgba(240,192,96,0.2);
+  }
+
+  .meta-chip.mode {
+    color: var(--text2);
     background: var(--bg3);
     border: 1px solid var(--border);
-    color: var(--text2);
   }
-  .meta-pill.locked { border-color: var(--gold2); color: var(--gold); }
-  .meta-pill.approximate { border-color: var(--border2); }
-  .meta-pill.primed { border-color: #5544aa; color: #aa99ff; }
 
-  /* ── Candidate bar ── */
-  .candidate-row {
+  .meta-chip.named {
+    color: var(--accent3);
+    background: rgba(124,92,252,0.08);
+    border: 1px solid rgba(124,92,252,0.2);
+  }
+
+  /* ── Candidate pills ── */
+  .candidates {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
-    margin-top: 10px;
+    margin-bottom: 14px;
   }
 
-  .candidate {
+  .cand-pill {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 5px;
     background: var(--bg3);
     border: 1px solid var(--border);
-    border-radius: 3px;
+    border-radius: 20px;
     padding: 4px 10px;
+    font-family: var(--mono);
     font-size: 11px;
-    transition: border-color 0.2s;
   }
-  .candidate:hover { border-color: var(--border2); }
 
   .cand-word { color: var(--text); }
-  .cand-score {
-    font-size: 10px;
-    color: var(--text3);
-    font-variant-numeric: tabular-nums;
-  }
-  .cand-label {
-    font-size: 9px;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    padding: 1px 5px;
-    border-radius: 2px;
-    background: rgba(0,212,255,0.08);
-    color: var(--accent2);
-  }
-  .cand-label.answer_cand { background: rgba(0,230,118,0.08); color: var(--pos); }
-  .cand-label.q_only      { background: rgba(255,82,82,0.08);  color: var(--neg); }
 
-  /* ── Per-word viz ── */
-  .perword-viz {
-    margin-top: 14px;
-  }
-  .perword-title {
-    font-size: 10px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
+  .cand-score {
     color: var(--text3);
-    margin-bottom: 8px;
+    font-size: 10px;
   }
-  .perword-bars {
+
+  .cand-bar {
+    width: 32px;
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .cand-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent2), var(--accent));
+    border-radius: 2px;
+  }
+
+  /* ── Toggle buttons ── */
+  .card-toggles {
     display: flex;
+    gap: 6px;
+    padding: 0 16px 14px;
     flex-wrap: wrap;
-    gap: 4px;
   }
-  .pw-word {
+
+  .toggle-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text2);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 5px 12px;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .toggle-btn:hover {
+    border-color: var(--border2);
+    color: var(--text);
+  }
+
+  .toggle-btn.active {
+    background: var(--bg3);
+    border-color: var(--border2);
+    color: var(--accent);
+  }
+
+  /* ── Expandable panels ── */
+  .panel {
+    display: none;
+    padding: 14px 16px;
+    border-top: 1px solid var(--border);
+    background: var(--bg3);
+  }
+
+  .panel.open { display: block; }
+
+  /* Field state panel */
+  .field-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 10px;
+  }
+
+  .field-item {
     display: flex;
     flex-direction: column;
-    align-items: center;
     gap: 3px;
-    min-width: 36px;
   }
-  .pw-bar-wrap {
-    width: 28px;
-    height: 40px;
-    display: flex;
-    align-items: flex-end;
-    justify-content: center;
-  }
-  .pw-bar {
-    width: 100%;
-    border-radius: 2px 2px 0 0;
-    transition: height 0.4s ease;
-  }
-  .pw-bar.pkt0 { background: linear-gradient(to top, var(--accent2), var(--accent)); }
-  .pw-bar.pkt1 { background: linear-gradient(to top, #5533aa, #9966ff); }
-  .pw-bar.neg  { background: linear-gradient(to top, #993333, var(--neg)); }
-  .pw-label {
+
+  .field-label {
+    font-family: var(--mono);
     font-size: 9px;
     color: var(--text3);
-    text-align: center;
-    max-width: 40px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+
+  .field-value {
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text);
+  }
+
+  .field-value.accent { color: var(--accent); }
+  .field-value.gold   { color: var(--gold); }
+  .field-value.purple { color: var(--accent3); }
+  .field-value.danger { color: var(--danger); }
+
+  /* Per-word panel */
+  .perword-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+
+  .perword-table th {
+    text-align: left;
+    color: var(--text3);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 0 8px 8px 0;
+    font-weight: 400;
+  }
+
+  .perword-table td {
+    padding: 4px 8px 4px 0;
+    border-top: 1px solid var(--border);
+    color: var(--text2);
+    vertical-align: middle;
+  }
+
+  .perword-table td.word {
+    color: var(--text);
+    font-weight: 500;
+  }
+
+  .pkt-badge {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 9px;
+    letter-spacing: 0.06em;
+  }
+
+  .pkt-badge.p0 {
+    background: rgba(0,212,170,0.1);
+    color: var(--accent);
+  }
+
+  .pkt-badge.p1 {
+    background: rgba(110,142,158,0.1);
+    color: var(--text3);
+  }
+
+  .tension-bar {
+    display: inline-block;
+    width: 40px;
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    vertical-align: middle;
+    position: relative;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  }
+
+  .tension-fill {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    border-radius: 2px;
+  }
+
+  .tension-fill.pos {
+    left: 50%;
+    background: var(--accent);
+  }
+
+  .tension-fill.neg {
+    right: 50%;
+    background: var(--danger);
+  }
+
+  /* Named words panel */
+  .named-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .named-word {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent3);
+    background: rgba(124,92,252,0.08);
+    border: 1px solid rgba(124,92,252,0.15);
+    padding: 3px 9px;
+    border-radius: 20px;
   }
 
   /* ── Empty state ── */
   .empty-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
     text-align: center;
-    padding: 40px;
+    padding: 48px 24px;
     color: var(--text3);
   }
-  .empty-state .glyph {
-    font-size: 48px;
-    margin-bottom: 16px;
-    opacity: 0.4;
-    font-family: var(--display);
-    font-weight: 800;
-    letter-spacing: -2px;
-  }
-  .empty-state p {
-    font-size: 12px;
-    max-width: 320px;
-    line-height: 1.7;
-  }
-  .example-prompts {
-    margin-top: 20px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    text-align: left;
-  }
-  .example-btn {
-    background: transparent;
-    border: 1px solid var(--border);
-    border-radius: 3px;
-    color: var(--text3);
+
+  .empty-state .big-eq {
     font-family: var(--mono);
-    font-size: 11px;
-    padding: 8px 12px;
-    cursor: pointer;
-    transition: border-color 0.2s, color 0.2s;
-    text-align: left;
-    line-height: 1.4;
-  }
-  .example-btn:hover { border-color: var(--border2); color: var(--text2); }
-
-  /* ── Right panel ── */
-  .right {
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    background: var(--bg2);
+    font-size: 13px;
+    color: var(--border2);
+    margin-bottom: 16px;
+    line-height: 2;
   }
 
-  .panel-header {
-    padding: 16px 20px 12px;
-    border-bottom: 1px solid var(--border);
-    font-size: 10px;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
+  .empty-state p {
+    font-size: 13px;
+    font-family: var(--mono);
     color: var(--text3);
   }
 
-  .field-state {
-    padding: 16px 20px;
-    border-bottom: 1px solid var(--border);
+  /* ── Error ── */
+  .error-msg {
+    background: rgba(255,68,102,0.08);
+    border: 1px solid rgba(255,68,102,0.2);
+    color: #ff8899;
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 12px 16px;
+    border-radius: var(--r);
+    margin-bottom: 16px;
   }
 
-  .state-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-  }
-
-  .state-item {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-
-  .state-label {
-    font-size: 9px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--text3);
-  }
-
-  .state-value {
-    font-size: 16px;
-    font-weight: 700;
-    font-family: var(--display);
-    color: var(--text);
-    font-variant-numeric: tabular-nums;
-  }
-  .state-value.accent { color: var(--accent); }
-  .state-value.gold   { color: var(--gold); }
-  .state-value.pos    { color: var(--pos); }
-
-  /* ── Resolution bar ── */
-  .res-bar-wrap {
-    margin: 12px 20px;
-  }
-  .res-bar-label {
-    display: flex;
-    justify-content: space-between;
-    font-size: 10px;
-    color: var(--text3);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    margin-bottom: 6px;
-  }
-  .res-bar-track {
-    height: 4px;
-    background: var(--bg3);
-    border-radius: 2px;
-    overflow: hidden;
-  }
-  .res-bar-fill {
-    height: 100%;
-    border-radius: 2px;
-    background: linear-gradient(to right, var(--accent2), var(--accent));
-    transition: width 0.5s ease;
-  }
-
-  /* ── Named words ── */
-  .named-section {
-    flex: 1;
-    overflow-y: auto;
-    padding: 12px 20px 20px;
-  }
-  .named-section::-webkit-scrollbar { width: 3px; }
-  .named-section::-webkit-scrollbar-thumb { background: var(--border); }
-
-  .named-title {
-    font-size: 10px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--text3);
-    margin-bottom: 10px;
-  }
-
-  .named-chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 5px;
-  }
-
-  .named-chip {
-    font-size: 11px;
-    padding: 3px 8px;
-    background: var(--bg3);
-    border: 1px solid var(--border);
-    border-radius: 2px;
-    color: var(--text2);
-    transition: border-color 0.3s, color 0.3s;
-  }
-  .named-chip.new-word {
-    border-color: var(--gold2);
-    color: var(--gold);
-    animation: chipPop 0.4s ease;
-  }
-  @keyframes chipPop {
-    0%  { transform: scale(0.8); opacity: 0; }
-    60% { transform: scale(1.1); }
-    100%{ transform: scale(1);   opacity: 1; }
-  }
-
-  /* ── Möbius state ── */
-  .mobius-section {
-    padding: 12px 20px;
-    border-top: 1px solid var(--border);
-  }
-  .mobius-face {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-top: 8px;
-  }
-  .face-badge {
-    font-family: var(--display);
-    font-weight: 800;
-    font-size: 14px;
-    letter-spacing: 0.05em;
-    padding: 4px 12px;
-    border-radius: 2px;
-  }
-  .face-badge.INNER {
-    background: rgba(0,212,255,0.1);
-    color: var(--accent);
-    border: 1px solid var(--accent2);
-  }
-  .face-badge.OUTER {
-    background: rgba(240,165,0,0.1);
-    color: var(--gold);
-    border: 1px solid var(--gold2);
-  }
-  .face-desc {
-    font-size: 10px;
-    color: var(--text3);
-    line-height: 1.4;
-  }
-
-  /* ── Scrollbar global ── */
-  ::-webkit-scrollbar { width: 4px; height: 4px; }
-  ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
-
-  
-  /* ── Disclaimer modal ── */
-  .modal-overlay {
+  /* ── About modal ── */
+  .modal-bg {
+    display: none;
     position: fixed;
     inset: 0;
-    background: rgba(4, 8, 14, 0.92);
+    background: rgba(0,0,0,0.8);
     z-index: 200;
-    display: flex;
     align-items: center;
     justify-content: center;
-    backdrop-filter: blur(4px);
-    animation: fadeIn 0.3s ease;
+    padding: 16px;
   }
-  .modal-overlay.hidden { display: none; }
+
+  .modal-bg.open {
+    display: flex;
+  }
 
   .modal {
     background: var(--bg2);
     border: 1px solid var(--border2);
-    border-radius: 6px;
+    border-radius: var(--r);
     max-width: 560px;
-    width: calc(100% - 40px);
-    padding: 36px 40px;
-    position: relative;
-  }
-
-  .modal-eyebrow {
-    font-size: 10px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--accent);
-    margin-bottom: 12px;
+    width: 100%;
+    max-height: 80vh;
+    overflow-y: auto;
+    padding: 28px;
   }
 
   .modal h2 {
-    font-family: var(--display);
-    font-size: 22px;
+    font-size: 18px;
     font-weight: 800;
+    margin-bottom: 16px;
     color: #fff;
-    margin-bottom: 20px;
-    line-height: 1.2;
-    letter-spacing: -0.3px;
   }
 
-  .modal-blocks {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-    margin-bottom: 24px;
-  }
-
-  .modal-block {
-    display: flex;
-    gap: 14px;
-    align-items: flex-start;
-  }
-
-  .modal-block-icon {
-    font-size: 16px;
-    flex-shrink: 0;
-    margin-top: 1px;
-    width: 20px;
-    text-align: center;
-  }
-
-  .modal-block-text {
+  .modal p, .modal li {
+    font-family: var(--mono);
     font-size: 12px;
     color: var(--text2);
-    line-height: 1.65;
+    line-height: 1.8;
+    margin-bottom: 10px;
   }
 
-  .modal-block-text b {
-    color: var(--text);
-    font-weight: 700;
-  }
+  .modal ul { padding-left: 16px; }
 
-  .modal-stat {
-    display: inline-block;
-    background: rgba(0,212,255,0.08);
-    border: 1px solid var(--border2);
-    border-radius: 2px;
-    padding: 1px 7px;
+  .modal .eq {
+    font-family: var(--mono);
     font-size: 11px;
-    color: var(--accent);
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
+    color: var(--gold);
+    background: rgba(240,192,96,0.06);
+    border: 1px solid rgba(240,192,96,0.12);
+    padding: 10px 14px;
+    border-radius: var(--r2);
+    margin: 12px 0;
+    line-height: 2;
   }
 
-  .modal-divider {
-    height: 1px;
-    background: var(--border);
-    margin: 20px 0;
-  }
-
-  .modal-footer {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-  }
-
-  .modal-footer-text {
-    font-size: 10px;
-    color: var(--text3);
-    line-height: 1.5;
-  }
-
-  .btn-dismiss {
-    background: var(--accent);
-    color: #000;
+  .modal-close {
+    float: right;
+    background: none;
     border: none;
-    border-radius: 3px;
-    font-family: var(--mono);
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    padding: 10px 22px;
+    color: var(--text2);
+    font-size: 20px;
     cursor: pointer;
-    flex-shrink: 0;
-    transition: background 0.15s;
+    line-height: 1;
+    padding: 0;
+    margin-left: 8px;
   }
-  .btn-dismiss:hover { background: #33ddff; }
 
-  .info-btn {
-    background: transparent;
-    border: 1px solid var(--border2);
-    color: var(--text3);
-    border-radius: 3px;
-    font-family: var(--mono);
-    font-size: 10px;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    padding: 5px 10px;
-    cursor: pointer;
-    transition: border-color 0.2s, color 0.2s;
-  }
-  .info-btn:hover { border-color: var(--text2); color: var(--text); }
+  .modal-close:hover { color: #fff; }
 
-  /* ── Error toast ── */
-  .toast {
-    position: fixed;
-    bottom: 24px;
-    left: 50%;
-    transform: translateX(-50%) translateY(80px);
-    background: #2a1010;
-    border: 1px solid #663333;
-    color: var(--neg);
-    font-size: 12px;
-    padding: 10px 20px;
-    border-radius: 4px;
-    z-index: 100;
-    transition: transform 0.3s ease;
+  /* ── Responsive ── */
+  @media (max-width: 520px) {
+    header { padding: 12px 16px; }
+    nav a:not(.github) { display: none; }
+    .hero { padding: 28px 16px 20px; }
+    .field-grid { grid-template-columns: repeat(2, 1fr); }
+    .perword-table th:nth-child(4),
+    .perword-table td:nth-child(4) { display: none; }
   }
-  .toast.show { transform: translateX(-50%) translateY(0); }
 </style>
 </head>
 <body>
 
+<!-- Header -->
+<header>
+  <div class="logo">
+    <span class="logo-name">GCL</span>
+    <span class="logo-tag">GPLM</span>
+  </div>
+  <nav>
+    <a href="#" onclick="openAbout(); return false;">About</a>
+    <a href="https://github.com/GCLprimary/GeoClarityLabs" target="_blank" class="github">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+        <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+      </svg>
+      GitHub
+    </a>
+  </nav>
+</header>
 
-<div class="modal-overlay" id="modal-overlay">
-  <div class="modal">
-    <div class="modal-eyebrow">Academic Research Demo</div>
-    <h2>This is a geometric field,<br>not a chatbot.</h2>
-
-    <div class="modal-blocks">
-
-      <div class="modal-block">
-        <div class="modal-block-icon">◈</div>
-        <div class="modal-block-text">
-          <b>What this is.</b> GCL is an academic demonstration of a
-          <b>flexoelectric gradient field</b> operating in symbol space.
-          It processes language using only three mathematical constants —
-          π, φ, and a single boundary value — with no training data,
-          no embeddings, and no statistical inference.
-        </div>
-      </div>
-
-      <div class="modal-block">
-        <div class="modal-block-icon">◉</div>
-        <div class="modal-block-text">
-          <b>What the outputs are.</b> The system returns the
-          <b>geometrically highest-charge words</b> from the field's
-          response to your input — not a generated answer.
-          Outputs are semantically correlated because semantic weight
-          is a geometric property, but they are field readouts,
-          not language model responses.
-        </div>
-      </div>
-
-      <div class="modal-block">
-        <div class="modal-block-icon">∂²</div>
-        <div class="modal-block-text">
-          <b>What this demonstrates.</b> Output quality correlates with
-          the <b>gradient</b> of information density across the input
-          <span class="modal-stat">r = 0.91</span>, not with mean
-          density <span class="modal-stat">r = 0.61</span>.
-          This is the signature of a flexoelectric system —
-          polarization proportional to strain gradient, not strain.
-        </div>
-      </div>
-
-      <div class="modal-block">
-        <div class="modal-block-icon">⊘</div>
-        <div class="modal-block-text">
-          <b>What this is not.</b> Semantics and training could be
-          layered on top, but that is not the point. This model exists
-          to show that <b>the gradient mechanism is real and measurable</b>
-          independent of any learned representation.
-        </div>
-      </div>
-
-    </div>
-
-    <div class="modal-divider"></div>
-
-    <div class="modal-footer">
-      <div class="modal-footer-text">
-        For best results: use a rich context sentence followed by a clear question.<br>
-        Press Ctrl+Enter to submit.
-      </div>
-      <button class="btn-dismiss" onclick="dismissModal()">Understood</button>
-    </div>
+<!-- Hero -->
+<div class="hero">
+  <h1>Geometric Language<br><span>Processing Model</span></h1>
+  <p>A non-parametric language model. No training data. No weights. No embeddings.<br>
+  All behavior derives from three mathematical constants.</p>
+  <div class="constants">
+    <span class="const-badge">π = 3.14159…</span>
+    <span class="const-badge">φ = 1.61803…</span>
+    <span class="const-badge">AD = 2π/3 − 2.078</span>
   </div>
 </div>
 
-
-<header>
-  <div class="logo">GC<span>L</span></div>
-  <div class="tagline">Geometric Clarity Lab — Flexoelectric Language Field</div>
-  <div class="header-links">
-    <button class="info-btn" onclick="showModal()">About</button>
-    <a href="https://github.com/GCLprimary/GeoClarityLabs" target="_blank">GitHub</a>
-    <a href="https://twitter.com/SquaredGradient" target="_blank">@SquaredGradient</a>
-  </div>
-</header>
-
+<!-- Main -->
 <main>
-  <!-- Left: input + output -->
-  <div class="left">
-    <div class="input-zone">
-      <div class="input-label">Input</div>
-      <div class="input-wrap">
-        <textarea id="prompt" placeholder="Context sentence. Question?" rows="4"></textarea>
-      </div>
-      <div class="input-hint">
-        Format: <b>Context sentence.</b> then <b>Question?</b> — or ask a bare question (uses conversation context).
-      </div>
-      <div class="submit-row">
-        <div class="status-dot" id="status-dot"></div>
-        <button class="run" id="run-btn" onclick="runPrompt()">Process</button>
-        <button class="new-session" onclick="newSession()">New Session</button>
-        <span id="session-label" style="font-size:10px;color:var(--text3);margin-left:4px;"></span>
-      </div>
-    </div>
 
-    <div class="output-zone" id="output-zone">
-      <div class="empty-state" id="empty-state">
-        <div class="glyph">∂²</div>
-        <p>A first-principles flexoelectric gradient field for language processing. No training. No embeddings. Pure geometry.</p>
-        <div class="example-prompts">
-          <button class="example-btn" onclick="useExample(this)">Monarch butterflies use an internal magnetic compass and inherited timing to navigate thousands of miles. How do monarch butterflies navigate such long distances across generations?</button>
-          <button class="example-btn" onclick="useExample(this)">Axolotls can regrow entire limbs and spinal cord segments through the activation of specialized progenitor cells. How do axolotls regenerate lost body parts so effectively?</button>
-          <button class="example-btn" onclick="useExample(this)">Flexoelectric polarization arises from strain gradients in the dielectric medium, coupling curvature to electric field without requiring symmetry breaking. What does the flexoelectric gradient produce in an asymmetric field?</button>
-        </div>
-      </div>
+  <!-- Error -->
+  <div id="errorMsg" class="error-msg" style="display:none"></div>
+
+  <!-- Session bar -->
+  <div class="session-bar" id="sessionBar" style="display:none">
+    <div class="session-stat">
+      <div class="session-dot live" id="sessionDot"></div>
+      <span class="label">Session</span>
+      <span class="value" id="statPrompts">0</span>
+      <span class="label">prompts</span>
+    </div>
+    <div class="session-stat">
+      <span class="label">Named</span>
+      <span class="value warm" id="statNamed">0</span>
+    </div>
+    <div class="session-stat">
+      <span class="label">Vocab</span>
+      <span class="value" id="statVocab">0</span>
+    </div>
+    <div class="session-stat">
+      <span class="label">Resolution</span>
+      <span class="value accent" id="statRes">—</span>
     </div>
   </div>
 
-  <!-- Right: field state panel -->
-  <div class="right">
-    <div class="panel-header">Field State</div>
-
-    <div class="field-state">
-      <div class="state-grid">
-        <div class="state-item">
-          <div class="state-label">Resolution</div>
-          <div class="state-value accent" id="s-resolution">—</div>
-        </div>
-        <div class="state-item">
-          <div class="state-label">Polarity</div>
-          <div class="state-value" id="s-polarity">—</div>
-        </div>
-        <div class="state-item">
-          <div class="state-label">Field Stress</div>
-          <div class="state-value" id="s-stress">—</div>
-        </div>
-        <div class="state-item">
-          <div class="state-label">Net Carry</div>
-          <div class="state-value gold" id="s-carry">—</div>
-        </div>
-        <div class="state-item">
-          <div class="state-label">Vocab</div>
-          <div class="state-value" id="s-vocab">—</div>
-        </div>
-        <div class="state-item">
-          <div class="state-label">Named</div>
-          <div class="state-value pos" id="s-named">—</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="res-bar-wrap">
-      <div class="res-bar-label">
-        <span>Field Resolution</span>
-        <span id="s-res-pct">0%</span>
-      </div>
-      <div class="res-bar-track">
-        <div class="res-bar-fill" id="res-bar" style="width:0%"></div>
-      </div>
-    </div>
-
-    <div class="mobius-section">
-      <div class="panel-header" style="padding:0 0 8px; border:none;">Möbius Surface</div>
-      <div class="mobius-face">
-        <div class="face-badge" id="mobius-face">—</div>
-        <div class="face-desc" id="mobius-desc">Awaiting first prompt</div>
-      </div>
-    </div>
-
-    <div class="named-section">
-      <div class="named-title">Named Invariants — <span id="named-count">0</span></div>
-      <div class="named-chips" id="named-chips"></div>
+  <!-- Input -->
+  <div class="input-wrap">
+    <textarea id="promptInput"
+      placeholder="Ask anything — the field reads your question geometrically…"
+      rows="3"
+      maxlength="2000"
+      onkeydown="handleKey(event)"
+      oninput="updateCount()"
+    ></textarea>
+    <div class="input-footer">
+      <span class="char-count" id="charCount">0 / 2000</span>
+      <button class="send-btn" id="sendBtn" onclick="submitPrompt()">
+        <div class="spinner"></div>
+        <span class="btn-text">Process →</span>
+      </button>
     </div>
   </div>
+
+  <!-- Output list -->
+  <div class="output-list" id="outputList">
+    <div class="empty-state" id="emptyState">
+      <div class="big-eq">
+        S<sub>k+1</sub> = { x ∈ S<sub>k</sub> | |f<sup>k</sup>(x) + δ| &lt; r<sub>resonant</sub> }<br>
+        r<sub>resonant</sub> = 1/φ² ≈ 0.381966
+      </div>
+      <p>Words persist if their field trajectory stays within the convergence radius of φ.</p>
+    </div>
+  </div>
+
 </main>
 
-<div class="toast" id="toast"></div>
+<!-- About modal -->
+<div class="modal-bg" id="aboutModal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeAbout()">×</button>
+    <h2>Geometric Persistence Language Model</h2>
+    <p>GCL processes language through geometric field dynamics — not statistical correlation. A word is "known" if its symbol trajectory produces a bounded orbit near the golden ratio attractor.</p>
+    <div class="eq">
+      AD = (2π/3) − 2.078 ≈ 0.016395102<br>
+      r_resonant = 1/φ² ≈ 0.381966<br>
+      orbit_score = exp(−dist / r_resonant)
+    </div>
+    <p>Every constant in the system derives from π, φ, and the effective boundary 2.078. No learned weights. No training corpus. No embeddings.</p>
+    <ul>
+      <li>Per-word geometric pocket scoring assigns field roles from measured tension and charge</li>
+      <li>Named invariants are words with stable bounded orbits — stored as FFT signatures</li>
+      <li>Library queries use orbit distance, not semantic similarity</li>
+      <li>Every output is geometrically auditable — full field state shown on request</li>
+      <li>Sleep cycle runs every 20 prompts: prune → consolidate → dream</li>
+    </ul>
+    <p>The system improves through accumulation, not retraining. Each session deepens the geometric library.</p>
+  </div>
+</div>
 
 <script>
-
-// ── Disclaimer modal ──────────────────────────────────────────────────────
-function dismissModal() {
-  document.getElementById('modal-overlay').classList.add('hidden');
-  localStorage.setItem('gcl-disclaimer-seen', '1');
-}
-function showModal() {
-  document.getElementById('modal-overlay').classList.remove('hidden');
-}
-// Only show on first visit
-if (localStorage.getItem('gcl-disclaimer-seen')) {
-  document.getElementById('modal-overlay').classList.add('hidden');
-}
-
-
 // ── State ──────────────────────────────────────────────────────────────────
-let sessionId   = null;
-let knownNamed  = new Set();
-let lastRes     = 0.15;
-// API base — empty string = same origin (works locally and on Railway)
-const API = '';
+let SESSION_ID = null;
+let promptCount = 0;
 
-// ── Session management ─────────────────────────────────────────────────────
+// ── Init ───────────────────────────────────────────────────────────────────
 async function initSession() {
   try {
-    const r = await fetch(`${API}/session/new`, { method: 'POST' });
-    if (!r.ok) throw new Error(await r.text());
+    const r = await fetch('/session/new', { method: 'POST' });
+    if (!r.ok) throw new Error('Session init failed');
     const d = await r.json();
-    sessionId = d.session_id;
-    const short = sessionId.slice(0, 8);
-    document.getElementById('session-label').textContent = `session ${short}`;
-    document.getElementById('status-dot').className = 'status-dot ready';
+    SESSION_ID = d.session_id;
+    document.getElementById('sessionBar').style.display = 'flex';
+    document.getElementById('sessionDot').classList.add('live');
   } catch(e) {
-    showToast(`Could not connect to GCL server: ${e.message}`);
-    document.getElementById('status-dot').className = 'status-dot';
+    showError('Could not connect to GCL server. Make sure it is running.');
   }
 }
 
-async function newSession() {
-  if (sessionId) {
-    await fetch(`${API}/session/${sessionId}`, { method: 'DELETE' }).catch(()=>{});
-  }
-  sessionId = null;
-  knownNamed.clear();
-  lastRes = 0.15;
-  document.getElementById('named-chips').innerHTML = '';
-  document.getElementById('named-count').textContent = '0';
-  resetFieldState();
-  await initSession();
+initSession();
+
+// ── Input helpers ──────────────────────────────────────────────────────────
+function updateCount() {
+  const v = document.getElementById('promptInput').value.length;
+  document.getElementById('charCount').textContent = v + ' / 2000';
 }
 
-// ── Process prompt ─────────────────────────────────────────────────────────
-async function runPrompt() {
-  const prompt = document.getElementById('prompt').value.trim();
-  if (!prompt) return;
-  if (!sessionId) await initSession();
-  if (!sessionId) return;
+function handleKey(e) {
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault();
+    submitPrompt();
+  }
+}
 
-  const btn = document.getElementById('run-btn');
-  const dot = document.getElementById('status-dot');
+// ── Submit ─────────────────────────────────────────────────────────────────
+async function submitPrompt() {
+  const inp = document.getElementById('promptInput');
+  const prompt = inp.value.trim();
+  if (!prompt || prompt.length < 3) return;
+  if (!SESSION_ID) { await initSession(); if (!SESSION_ID) return; }
+
+  const btn = document.getElementById('sendBtn');
   btn.disabled = true;
-  dot.className = 'status-dot loading';
+  btn.classList.add('loading');
+
+  hideError();
 
   try {
-    const r = await fetch(`${API}/session/${sessionId}/process`, {
+    const r = await fetch(`/session/${SESSION_ID}/process`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt }),
+      body: JSON.stringify({ prompt })
     });
 
     if (!r.ok) {
-      const err = await r.json().catch(() => ({ detail: r.statusText }));
-      throw new Error(err.detail || r.statusText);
+      const err = await r.json().catch(() => ({}));
+      throw new Error(err.detail || `Error ${r.status}`);
     }
 
     const data = await r.json();
-    renderExchange(prompt, data);
-    updateFieldState(data);
-    updateNamedWords(data.session?.newly_named || []);
-    document.getElementById('prompt').value = '';
-    document.getElementById('empty-state').style.display = 'none';
+    inp.value = '';
+    updateCount();
+    promptCount++;
+    updateSessionBar(data);
+    renderCard(prompt, data);
+    document.getElementById('emptyState')?.remove();
 
   } catch(e) {
-    showToast(`Error: ${e.message}`);
-    if (e.message.includes('404') || e.message.includes('expired')) {
-      sessionId = null;
-      await initSession();
-    }
+    showError(e.message);
   } finally {
     btn.disabled = false;
-    dot.className = 'status-dot ready';
+    btn.classList.remove('loading');
+    inp.focus();
   }
 }
 
-// ── Render exchange ────────────────────────────────────────────────────────
-function renderExchange(prompt, data) {
-  const zone = document.getElementById('output-zone');
+// ── Session bar ────────────────────────────────────────────────────────────
+function updateSessionBar(data) {
+  const s = data.session || {};
+  const g = data.geo || {};
+  document.getElementById('statPrompts').textContent = s.prompt_count ?? promptCount;
+  document.getElementById('statNamed').textContent = s.named_count ?? '—';
+  document.getElementById('statVocab').textContent = s.vocab_size ?? '—';
+  document.getElementById('statRes').textContent =
+    g.resolution != null ? g.resolution.toFixed(3) : '—';
+}
 
-  const geo   = data.geo    || {};
-  const fp    = data.fingerprint || {};
-  const locked = data.parity_locked;
-  const primed = data.was_primed;
+// ── Render card ────────────────────────────────────────────────────────────
+function renderCard(prompt, data) {
+  const list = document.getElementById('outputList');
+  const id = 'card-' + Date.now();
 
-  const el = document.createElement('div');
-  el.className = 'exchange';
+  const geo    = data.geo    || {};
+  const field  = data.field  || {};
+  const fp     = data.fingerprint || {};
+  const sess   = data.session || {};
 
-  // Prompt
-  el.innerHTML = `<div class="exchange-prompt">${escHtml(prompt.slice(0, 200))}</div>`;
+  const outputText = data.geo_output || '';
+  const isEmpty    = !outputText || outputText === '.';
+  const locked     = data.parity_locked;
+  const newlyNamed = sess.newly_named || [];
+  const candidates = geo.pocket_scores || [];
+  const perWord    = fp.per_word || [];
 
-  // Output card
-  const card = document.createElement('div');
-  card.className = 'exchange-output';
+  // Answer display
+  const answerHtml = isEmpty
+    ? `<div class="answer-text empty">Field could not resolve — insufficient geometric mass</div>`
+    : `<div class="answer-text">${escHtml(outputText)}</div>`;
 
-  // Main text
-  const outText = data.geo_output || '—';
-  card.innerHTML = `<div class="output-text">${escHtml(outText)}</div>`;
-
-  // Meta pills
-  const meta = document.createElement('div');
-  meta.className = 'output-meta';
-
-  meta.innerHTML += `<span class="meta-pill ${locked ? 'locked' : 'approximate'}">${locked ? '⟳ locked' : '~ approx'}</span>`;
-  if (geo.resolution) meta.innerHTML += `<span class="meta-pill">res ${geo.resolution.toFixed(3)}</span>`;
-  if (geo.field_polarity !== undefined) {
-    const pol = geo.field_polarity;
-    meta.innerHTML += `<span class="meta-pill" style="color:${pol>0?'var(--pos)':'var(--neg)'}">${pol>0?'+':''}${pol.toFixed(3)}</span>`;
+  // Meta chips
+  let metaHtml = '';
+  if (!isEmpty) {
+    metaHtml += locked
+      ? `<span class="meta-chip locked">⟳ parity locked</span>`
+      : `<span class="meta-chip approx">~ approximate</span>`;
   }
-  if (primed) meta.innerHTML += `<span class="meta-pill primed">⊕ primed</span>`;
-  if (data.elapsed_ms) meta.innerHTML += `<span class="meta-pill">${data.elapsed_ms}ms</span>`;
-  card.appendChild(meta);
+  if (field.gen_mode) {
+    metaHtml += `<span class="meta-chip mode">${escHtml(field.gen_mode)}</span>`;
+  }
+  if (field.domain_flipped) {
+    metaHtml += `<span class="meta-chip approx">⚡ domain flip</span>`;
+  }
+  if (newlyNamed.length > 0) {
+    metaHtml += `<span class="meta-chip named">+${newlyNamed.length} named</span>`;
+  }
 
   // Candidates
-  if (geo.pocket_scores && geo.pocket_scores.length) {
-    const row = document.createElement('div');
-    row.className = 'candidate-row';
-    geo.pocket_scores.slice(0,6).forEach(c => {
-      const labelClass = (c.pocket_label || '').replace(/[^a-z_]/g,'');
-      row.innerHTML += `<div class="candidate">
-        <span class="cand-word">${escHtml(c.word)}</span>
-        <span class="cand-score">${c.score.toFixed(3)}</span>
-        <span class="cand-label ${labelClass}">${(c.pocket_label||'').slice(0,8)}</span>
-      </div>`;
+  let candHtml = '';
+  if (candidates.length > 0 && !isEmpty) {
+    candHtml = '<div class="candidates">';
+    const maxScore = Math.max(...candidates.map(c => c.score || 0));
+    candidates.slice(0, 6).forEach(c => {
+      const pct = maxScore > 0 ? Math.round((c.score / maxScore) * 100) : 0;
+      const typeColor = c.type === 'lib_q' ? '#7c5cfc' : '#00d4aa';
+      candHtml += `
+        <div class="cand-pill">
+          <span class="cand-word">${escHtml(c.word)}</span>
+          <div class="cand-bar">
+            <div class="cand-bar-fill" style="width:${pct}%;background:${typeColor}"></div>
+          </div>
+          <span class="cand-score">${(c.score||0).toFixed(3)}</span>
+        </div>`;
     });
-    card.appendChild(row);
+    candHtml += '</div>';
   }
 
-  // Per-word bar chart
-  if (fp.per_word && fp.per_word.length > 0) {
-    const viz = document.createElement('div');
-    viz.className = 'perword-viz';
-    viz.innerHTML = `<div class="perword-title">Gradient — |ns| per word</div>`;
-    const bars = document.createElement('div');
-    bars.className = 'perword-bars';
+  // Field state panel
+  const fieldPanel = `
+    <div class="field-grid">
+      <div class="field-item">
+        <span class="field-label">Polarity</span>
+        <span class="field-value accent">${(geo.field_polarity||0).toFixed(4)}</span>
+      </div>
+      <div class="field-item">
+        <span class="field-label">Resolution</span>
+        <span class="field-value accent">${(geo.resolution||0).toFixed(4)}</span>
+      </div>
+      <div class="field-item">
+        <span class="field-label">Consensus</span>
+        <span class="field-value ${(field.consensus||0) < 0 ? 'danger' : ''}">${(field.consensus||0).toFixed(4)}</span>
+      </div>
+      <div class="field-item">
+        <span class="field-label">Persistence</span>
+        <span class="field-value">${(field.persistence||0).toFixed(4)}</span>
+      </div>
+      <div class="field-item">
+        <span class="field-label">G actual</span>
+        <span class="field-value">${(field.G_actual||0).toFixed(3)}</span>
+      </div>
+      <div class="field-item">
+        <span class="field-label">G needed</span>
+        <span class="field-value">${(field.G_needed||0).toFixed(3)}</span>
+      </div>
+      <div class="field-item">
+        <span class="field-label">Field stress</span>
+        <span class="field-value ${(fp.field_stress||0) > 0.35 ? 'gold' : ''}">${(fp.field_stress||0).toFixed(4)}</span>
+      </div>
+      <div class="field-item">
+        <span class="field-label">Pressure</span>
+        <span class="field-value">${field.pressure_mode||'—'}</span>
+      </div>
+      <div class="field-item">
+        <span class="field-label">Net tension</span>
+        <span class="field-value">${(fp.net_tension||0).toFixed(4)}</span>
+      </div>
+      <div class="field-item">
+        <span class="field-label">Direction</span>
+        <span class="field-value ${fp.direction==='positive'?'accent':'danger'}">${fp.direction||'—'}</span>
+      </div>
+      <div class="field-item">
+        <span class="field-label">Named total</span>
+        <span class="field-value purple">${sess.named_count||0}</span>
+      </div>
+      <div class="field-item">
+        <span class="field-label">Elapsed</span>
+        <span class="field-value">${data.elapsed_ms||0}ms</span>
+      </div>
+    </div>`;
 
-    const maxNs = Math.max(...fp.per_word.map(w => Math.abs(w.net_signed || 0)), 1);
-    fp.per_word.forEach(w => {
-      const absNs = Math.abs(w.net_signed || 0);
-      const h = Math.round((absNs / maxNs) * 38);
-      const pkt = w.pocket || 0;
-      const neg = (w.net_signed || 0) < -0.1;
-      const cls = neg ? 'neg' : (pkt === 0 ? 'pkt0' : 'pkt1');
-      bars.innerHTML += `<div class="pw-word">
-        <div class="pw-bar-wrap">
-          <div class="pw-bar ${cls}" style="height:${h}px" title="${w.word}: ${w.net_signed}"></div>
-        </div>
-        <div class="pw-label">${escHtml((w.word||'').slice(0,6))}</div>
-      </div>`;
-    });
-    viz.appendChild(bars);
-    card.appendChild(viz);
-  }
+  // Per-word panel
+  let perWordPanel = '<table class="perword-table"><thead><tr>' +
+    '<th>Word</th><th>Tension</th><th>Grp</th><th>Net</th><th>Pkt</th>' +
+    '</tr></thead><tbody>';
 
-  el.appendChild(card);
-  zone.insertBefore(el, zone.firstChild);
-}
-
-// ── Update field state panel ───────────────────────────────────────────────
-function updateFieldState(data) {
-  const geo   = data.geo    || {};
-  const fp    = data.fingerprint || {};
-  const field = data.field  || {};
-  const sess  = data.session || {};
-
-  const res = geo.resolution || lastRes;
-  lastRes   = res;
-
-  document.getElementById('s-resolution').textContent = res.toFixed(3);
-  document.getElementById('s-polarity').textContent   = (geo.field_polarity >= 0 ? '+' : '') + (geo.field_polarity || 0).toFixed(3);
-  document.getElementById('s-stress').textContent     = (fp.field_stress || 0).toFixed(4);
-  document.getElementById('s-carry').textContent      = (field.net_carry  || 0).toFixed(3);
-  document.getElementById('s-vocab').textContent      = `${sess.vocab_size||0} (${sess.vocab_stable||0} stable)`;
-  document.getElementById('s-named').textContent      = sess.named_count || 0;
-
-  const resPct = Math.round(res * 100);
-  document.getElementById('res-bar').style.width = `${resPct}%`;
-  document.getElementById('s-res-pct').textContent = `${resPct}%`;
-
-  // Möbius face — infer from field polarity + stress as proxy
-  // (Möbius reader runs server-side, not returned in API yet)
-  // Show gen_mode instead as useful indicator
-  const genMode = field.gen_mode || '';
-  const face = genMode.includes('recognition') ? 'INNER' : 'OUTER';
-  const faceEl = document.getElementById('mobius-face');
-  faceEl.textContent = face;
-  faceEl.className = `face-badge ${face}`;
-  document.getElementById('mobius-desc').textContent =
-    face === 'INNER'
-      ? 'Local causal mechanism — field resolved'
-      : 'Distributed system — field approximating';
-}
-
-function resetFieldState() {
-  ['s-resolution','s-polarity','s-stress','s-carry','s-vocab','s-named']
-    .forEach(id => document.getElementById(id).textContent = '—');
-  document.getElementById('res-bar').style.width = '0%';
-  document.getElementById('s-res-pct').textContent = '0%';
-  document.getElementById('mobius-face').textContent = '—';
-  document.getElementById('mobius-face').className = 'face-badge';
-  document.getElementById('mobius-desc').textContent = 'Awaiting first prompt';
-}
-
-// ── Named words ────────────────────────────────────────────────────────────
-function updateNamedWords(newWords) {
-  const container = document.getElementById('named-chips');
-  const newSet    = new Set(newWords);
-
-  newWords.forEach(w => {
-    if (!knownNamed.has(w)) {
-      knownNamed.add(w);
-      const chip = document.createElement('span');
-      chip.className = 'named-chip new-word';
-      chip.textContent = w;
-      chip.title = 'newly named this prompt';
-      setTimeout(() => chip.classList.remove('new-word'), 2000);
-      container.prepend(chip);
-    }
+  perWord.forEach(w => {
+    const t = w.mean_tension || 0;
+    const tPct = Math.min(Math.abs(t) / 0.5 * 50, 50);
+    const tFill = t >= 0
+      ? `<div class="tension-fill pos" style="width:${tPct}%"></div>`
+      : `<div class="tension-fill neg" style="width:${tPct}%"></div>`;
+    const pkt = w.pocket === 0
+      ? `<span class="pkt-badge p0">ctx</span>`
+      : `<span class="pkt-badge p1">qry</span>`;
+    const ns = (w.net_signed||0).toFixed(3);
+    perWordPanel += `<tr>
+      <td class="word">${escHtml(w.word||'')}</td>
+      <td><div class="tension-bar">${tFill}</div></td>
+      <td>${w.dominant_group ?? '—'}</td>
+      <td>${ns}</td>
+      <td>${pkt}</td>
+    </tr>`;
   });
+  perWordPanel += '</tbody></table>';
 
-  document.getElementById('named-count').textContent = knownNamed.size;
+  // Named words panel
+  let namedPanel = '';
+  if (newlyNamed.length > 0) {
+    namedPanel = '<div class="named-list">' +
+      newlyNamed.map(w => `<span class="named-word">${escHtml(w)}</span>`).join('') +
+      '</div>';
+  } else {
+    namedPanel = '<p style="font-family:var(--mono);font-size:12px;color:var(--text3)">No new invariants named this prompt.</p>';
+  }
+
+  const card = document.createElement('div');
+  card.className = 'output-card';
+  card.id = id;
+  card.innerHTML = `
+    <div class="card-prompt">${escHtml(prompt)}</div>
+    <div class="card-answer">
+      ${answerHtml}
+      <div class="answer-meta">${metaHtml}</div>
+      ${candHtml}
+    </div>
+    <div class="card-toggles">
+      <button class="toggle-btn" onclick="togglePanel('${id}','field')">Field State</button>
+      <button class="toggle-btn" onclick="togglePanel('${id}','perword')">Per-Word</button>
+      ${newlyNamed.length > 0 ? `<button class="toggle-btn" onclick="togglePanel('${id}','named')">Named +${newlyNamed.length}</button>` : ''}
+    </div>
+    <div class="panel" id="${id}-field">${fieldPanel}</div>
+    <div class="panel" id="${id}-perword">${perWordPanel}</div>
+    ${newlyNamed.length > 0 ? `<div class="panel" id="${id}-named">${namedPanel}</div>` : ''}
+  `;
+
+  list.insertBefore(card, list.firstChild);
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────
-function escHtml(s) {
-  return String(s)
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
-    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+// ── Panel toggle ───────────────────────────────────────────────────────────
+function togglePanel(cardId, panel) {
+  const panelEl = document.getElementById(`${cardId}-${panel}`);
+  const allPanels = document.querySelectorAll(`#${cardId} .panel`);
+  const allBtns   = document.querySelectorAll(`#${cardId} .toggle-btn`);
+  const btn = [...allBtns].find(b => b.onclick.toString().includes(`'${panel}'`));
+
+  const isOpen = panelEl.classList.contains('open');
+
+  // Close all
+  allPanels.forEach(p => p.classList.remove('open'));
+  allBtns.forEach(b => b.classList.remove('active'));
+
+  // Open this one if it was closed
+  if (!isOpen) {
+    panelEl.classList.add('open');
+    if (btn) btn.classList.add('active');
+  }
 }
 
-function useExample(btn) {
-  document.getElementById('prompt').value = btn.textContent.trim();
-  document.getElementById('prompt').focus();
-}
+// ── Modal ──────────────────────────────────────────────────────────────────
+function openAbout()  { document.getElementById('aboutModal').classList.add('open'); }
+function closeAbout() { document.getElementById('aboutModal').classList.remove('open'); }
 
-function showToast(msg) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 4000);
-}
-
-// ── Enter key ─────────────────────────────────────────────────────────────
-document.getElementById('prompt').addEventListener('keydown', e => {
-  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) runPrompt();
+document.getElementById('aboutModal').addEventListener('click', function(e) {
+  if (e.target === this) closeAbout();
 });
 
-// ── Boot ──────────────────────────────────────────────────────────────────
-initSession();
+// ── Helpers ────────────────────────────────────────────────────────────────
+function showError(msg) {
+  const el = document.getElementById('errorMsg');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+function hideError() {
+  document.getElementById('errorMsg').style.display = 'none';
+}
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
 </script>
 </body>
 </html>

@@ -27,11 +27,12 @@ Information is conserved — nothing is lost, just restructured.
 import math
 import numpy as np
 from typing import List, Dict, Tuple, Any
+from core.invariants import invariants
 
 # ── Derived constants ─────────────────────────────────────────────────────────
 _PI                = math.pi
 _TWO_PI            = 2 * _PI
-_ASYMMETRIC_DELTA  = 0.01639510239          # (2π/3) - 2.078
+_ASYMMETRIC_DELTA  = invariants.asymmetric_delta  # (2π/3) - 2.078
 _OFFSET_ANGLE      = _PI / 8               # 22.5° — π/8
 _Z_SCALE           = _ASYMMETRIC_DELTA * 64 + 1   # ≈ 1.04929 per step
 _DISPERSAL_ANGLE   = _PI                   # structure folds at π
@@ -281,13 +282,15 @@ class DiagonalStructureGenerator:
         ring_net_phase:    float = 0.0,
         core_id:           int   = None,
         prompt:            str   = "",
+        candidates:        list  = None,
     ) -> DiagonalStructure:
         """
         Generate a diagonal structure from an exhaust signature.
         Stores it in history for later comparison.
+        candidates: pocket_score words from geo_result — stored so nearest()
+                    can return them as a recall pool for similar future prompts.
         """
         sig = np.array(exhaust_signature, dtype=float)
-        # Ensure normalized — should already be but guard anyway
         total = sig.sum()
         if total > 1e-10:
             sig = sig / total
@@ -298,6 +301,8 @@ class DiagonalStructureGenerator:
             core_id           = core_id,
             prompt            = prompt,
         )
+        # Attach candidates to the structure for recall
+        structure.candidates = list(candidates or [])
         self.structures.append(structure)
         return structure
 
@@ -313,10 +318,11 @@ class DiagonalStructureGenerator:
         for prior in self.structures[:-1]:  # exclude the current one
             sim = structure.similarity(prior)
             results.append({
-                "similarity": round(sim, 6),
-                "prompt":     prior.prompt[:60],
-                "complexity": prior.complexity_score,
-                "core_id":    prior.core_id,
+                "similarity":  round(sim, 6),
+                "prompt":      prior.prompt[:60],
+                "complexity":  prior.complexity_score,
+                "core_id":     prior.core_id,
+                "candidates":  getattr(prior, "candidates", []),
             })
         results.sort(key=lambda x: x["similarity"], reverse=True)
         return results[:top_n]

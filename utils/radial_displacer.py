@@ -22,20 +22,101 @@ class DynamicRadialDisplacer:
     stays clean instead of accumulating noise across runs.
     """
     def __init__(self):
-        self.asymmetric_delta = 0.01639510239
+        self.asymmetric_delta = invariants.asymmetric_delta
         self.web = []
         self.next_id = 0
         self.last_tick = time.time()
 
+    # ── Tensegrity radial table ─────────────────────────────────────────────
+    # Positions derived from four GCL constants and periodic table:
+    #   Radius = (electronegativity / 4.0) × φ       [φ governs scaling]
+    #   Angle  = (period / 7) × 2π                   [π governs rotation]
+    #   Negative hemisphere = positive + π + OUTER_AD [AD governs asymmetry]
+    #   Boundary = [AD, EB×φ/π]                       [EB governs the limit]
+    #
+    # Letter → element mapping by electronegativity rank (Pauling scale):
+    # Positive letters (A-M) map to electropositive elements (donors)
+    # Negative letters (N-Z) map to electronegative elements (acceptors)
+    # Z (F, fluorine, EN=3.98) lands at radius ≈ φ = 1.618 naturally.
+    #
+    # The structure is tensegrity: positive struts + negative tension cables
+    # balanced at the centre ('0'). No position is arbitrary — all derive
+    # from the same four constants that govern the rest of the field.
+    _OUTER_AD = 0.016395102 * 3.6298          # asymmetric pole offset
+    _R_MAX    = 2.078 * ((1+math.sqrt(5))/2) / math.pi   # EB×φ/π ≈ 1.070
+    _R_MIN    = 0.016395102                   # AD — minimum displacement
+
+    # (angle_rad, radius) for '0' through 'Z', index = position in SYMBOLS
+    # '0' is handled separately; A-Z follow electronegativity/period geometry
+    _RADIAL_TABLE = None  # built once on first use
+
+    @classmethod
+    def _build_radial_table(cls):
+        """Build the tensegrity position table from four constants."""
+        _phi = (1 + math.sqrt(5)) / 2
+        _pi  = math.pi
+        _oad = cls._OUTER_AD
+        _rmax= cls._R_MAX
+        _rmin= cls._R_MIN
+
+        # (element, EN, period) per letter A-Z
+        _letter_data = [
+            ("Fr",0.70,7),("Cs",0.79,6),("Rb",0.82,5),("K", 0.82,4),
+            ("Na",0.93,3),("Li",0.98,2),("Ba",0.89,6),("Ca",1.00,4),
+            ("Mg",1.31,3),("Al",1.61,3),("Zn",1.65,4),("Fe",1.83,4),
+            ("Cu",1.90,4),("Ge",2.01,4),("As",2.18,4),("Sn",1.96,5),
+            ("Te",2.10,5),("Se",2.55,4),("H", 2.20,1),("I", 2.66,5),
+            ("S", 2.58,3),("C", 2.55,2),("Cl",3.16,3),("N", 3.04,2),
+            ("O", 3.44,2),("F", 3.98,2),
+        ]
+        # charge sign: A-M positive, N-Z negative
+        table = {}
+        for i, (elem, en, period) in enumerate(_letter_data):
+            letter = chr(ord('A') + i)
+            charge = (i + 1) if i < 13 else -(i - 12)
+            base_angle = (period / 7.0) * 2 * _pi
+            if charge < 0:
+                base_angle += _pi + _oad   # negative hemisphere offset
+            radius = max(_rmin, min((en / 4.0) * _phi, _rmax))
+            table[letter] = (base_angle % (2 * _pi), radius)
+        cls._RADIAL_TABLE = table
+
     def _symbol_to_radial_position(self, symbol: str, layer: int = 0, tick: float = 0.0) -> tuple:
-        """Deterministic position with HARD phase-shift for '0'."""
+        """
+        Tensegrity position derived from four GCL constants and periodic table.
+
+        '0' sits at the centre — the unresolved dual state.
+        A-M (positive, electropositive elements) arc through the donor hemisphere.
+        N-Z (negative, electronegative elements) arc through the acceptor hemisphere.
+        Radius encodes electronegativity (scaled by φ).
+        Angle encodes element period (scaled by π).
+        Hemisphere offset uses the system's own asymmetric delta (OUTER_AD).
+        Layer adds an AD-scaled phase shift for depth variation.
+        """
         if symbol == '0':
+            # Unresolved dual state — sits at R_MAX (the field boundary).
+            # Phase-shifted by π per layer so '0' alternates hemispheres.
+            # This means zero-crossings sweep the full boundary arc,
+            # which is exactly the settling behavior padding needs.
             angle  = (layer % 2) * math.pi + invariants.get_pi_gradient(scale=1.0) * tick
-            radius = 2.2
+            radius = self._R_MAX  # boundary, not beyond it
             return (radius * math.cos(angle), radius * math.sin(angle))
-        idx    = (ord(symbol.upper()) - ord('A')) % 26
-        radius = 1.0 if layer % 2 == 0 else 0.6
-        angle  = (idx / 26.0) * 2 * math.pi + (layer * 0.3)
+
+        if self._RADIAL_TABLE is None:
+            self._build_radial_table()
+
+        sym = symbol.upper()
+        if sym not in self._RADIAL_TABLE:
+            # Fallback for unknown symbols: uniform placement
+            idx    = ord(sym) % 27
+            angle  = (idx / 27.0) * 2 * math.pi
+            radius = self._R_MIN * 2
+            return (radius * math.cos(angle), radius * math.sin(angle))
+
+        base_angle, radius = self._RADIAL_TABLE[sym]
+        # Layer phase shift: each layer adds AD × π offset
+        layer_shift = (layer * self._OUTER_AD * math.pi) % (2 * math.pi)
+        angle = (base_angle + layer_shift) % (2 * math.pi)
         return (radius * math.cos(angle), radius * math.sin(angle))
 
     def _create_displacer(self, prompt: str, tri_data: Dict[str, Any], wave_amp: float = 0.0) -> Dict[str, Any]:

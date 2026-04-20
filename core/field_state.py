@@ -45,6 +45,7 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from core.invariants import invariants
 
 # ── File location ─────────────────────────────────────────────────────────────
 _STATE_FILE  = Path(__file__).parent.parent / "field_state.json"
@@ -328,6 +329,15 @@ class FieldStateManager:
                 [w for w in (candidates or []) if w and len(w) > 2][:8]
                 or [w for w in (top_words or []) if w and len(w) > 2][:8]
             )
+            # Don't store exchanges with empty/minimal output.
+            # A '.' or single-word output means the field couldn't resolve.
+            # Storing it pollutes the window and causes wrong priming
+            # on retry — the failed attempt's geometry becomes context.
+            _output_clean = (output or "").strip().rstrip(".")
+            _output_words = [w for w in _output_clean.split() if len(w) > 2]
+            if len(_output_words) < 2:
+                return  # don't store failed/empty exchanges
+
             exchanges.append({
                 "anchor":      anchor_word or "",
                 "top_words":   context_source,
@@ -423,9 +433,17 @@ class FieldStateManager:
     def _load_conversation_window(self) -> Dict:
         raw = self._load_raw()
         if raw:
-            return raw.get("conversation", {
-                "recent_exchanges": [], "max_window": _CONV_WINDOW
-            })
+            conv = raw.get("conversation", {})
+            # Defensive: handle legacy formats where conversation was a bare list
+            if isinstance(conv, list):
+                return {"recent_exchanges": conv, "max_window": _CONV_WINDOW}
+            if not isinstance(conv, dict):
+                return {"recent_exchanges": [], "max_window": _CONV_WINDOW}
+            # Ensure recent_exchanges is a list of dicts, not strings
+            exchanges = conv.get("recent_exchanges", [])
+            if exchanges and not isinstance(exchanges[0], dict):
+                exchanges = []
+            return {"recent_exchanges": exchanges, "max_window": _CONV_WINDOW}
         return {"recent_exchanges": [], "max_window": _CONV_WINDOW}
 
     def _get_session_count(self) -> int:
@@ -436,6 +454,87 @@ class FieldStateManager:
         raw = self._load_raw()
         return raw.get("_total_prompts_processed", 0) if raw else 0
 
+    def compute_pressure_state(
+        self,
+        resolution: float,
+        G_actual: float,
+        pkt0_count: int,
+        pkt1_count: int,
+    ) -> dict:
+        """
+        Compute the active pressure state from current field geometry.
+
+        Uses resolution as the P0 proxy (simplest grounded approach):
+            P0 = P0_COLD + (P_MAX - P0_COLD) * resolution
+
+        Returns a dict the generate() pipeline can act on directly.
+        """
+        import math
+        _phi    = (1 + math.sqrt(5)) / 2
+        P0_COLD = invariants.P0_cold   # √φ/φ² = 0.4859
+        P_MAX   = invariants.P_max    # 3/φ² = 1.1459
+        MU      = 0.1117                         # coupling coefficient
+
+        # Current spontaneous polarization
+        P0 = P0_COLD + (P_MAX - P0_COLD) * resolution
+
+        # Current polarization level
+        if P0 < 0.650:   level = 0
+        elif P0 < 0.950: level = 1
+        elif P0 < 1.110: level = 2
+        else:            level = 3
+
+        # Gradient needed to reach L2 (FOCUS) and L3 (SATURATE)
+        P_L2  = 1.080
+        P_L3  = P_MAX
+        G_for_L2 = max(0.0, (P_L2 - P0) / MU)
+        G_for_L3 = max(0.0, (P_L3 - P0) / MU)
+
+        # Mode selection from gradient signature alone
+        pkt_ratio = pkt0_count / max(pkt1_count, 1)
+
+        if abs(G_actual - G_for_L2) <= 0.164:   # within AD*10 — sustain zone
+            mode         = "SUSTAIN"
+            G_needed     = G_for_L2
+            target_level = 2
+        elif G_actual >= _phi and pkt_ratio >= 1.5:
+            mode         = "SATURATE"
+            G_needed     = G_for_L3
+            target_level = 3
+        else:
+            mode         = "FOCUS"
+            G_needed     = G_for_L2
+            target_level = 2
+
+        pressure_delta = G_actual - G_needed
+        G_sat = G_for_L3 if G_for_L3 > 0 else 1.0
+
+        # Update rolling G history for gradient baseline learning
+        if not hasattr(self, "_G_history"):
+            self._G_history = []
+        self._G_history.append(G_actual)
+        if len(self._G_history) > 32:
+            self._G_history = self._G_history[-32:]
+        G_mean = sum(self._G_history) / len(self._G_history)
+        G_baseline = round(G_mean, 4)
+
+        return {
+            "mode":           mode,
+            "P0_current":     round(P0, 4),
+            "level_current":  level,
+            "G_actual":       round(G_actual, 4),
+            "G_needed":       round(G_needed, 4),
+            "G_sat":          round(G_sat, 4),
+            "pressure_delta": round(pressure_delta, 4),
+            "target_level":   target_level,
+            "P_MAX":          round(P_MAX, 6),
+            "P0_COLD":        round(P0_COLD, 6),
+            "MU":             MU,
+            "G_baseline":     G_baseline,   # rolling mean gradient — field's learned norm
+            "G_history_len":  len(self._G_history),
+        }
+
 
 # Module-level singleton
 field_state_manager = FieldStateManager()
+
