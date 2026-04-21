@@ -83,50 +83,38 @@ _NAMING_THRESHOLD  = 0.15
 _BOUNDARY_TOLERANCE = math.pi / 8   # 22.5 degrees
 
 
+# Words that should never become named invariants.
+# Mirrors the set in tools/clean_truth_library.py.
+# Prevents the truth library growing past ~150 real domain words.
+_INVARIANT_STRUCTURAL_WORDS = {
+    'how','why','what','where','when','which','who',
+    'do','does','did','is','are','was','were','will','would',
+    'can','could','should','may','might','must','shall',
+    'have','has','had','be','been','being',
+    'the','a','an','this','that','these','those',
+    'and','or','but','so','if','in','on','at','to','of',
+    'from','by','for','with','as','not','nor',
+    'it','its','they','them','their','we','our','us',
+    'he','she','his','her','i','me','my','you','your',
+    'very','also','just','only','even','still','already',
+    'always','never','often','usually','ever','truly',
+    'like','such','some','any','each','one','two','more',
+    'well','then','than','now','here','there',
+    'while','though','although','because','since',
+    'near','zero','times','per','about','between','other',
+    'most','many','few','both','all','no','every','each',
+    # Common question-stem verbs — no domain information
+    'help','keep','make','take','get','use','see','know','find',
+    'give','come','go','work','show','look','need','want','turn',
+    'let','put','set','run','try','ask','seem','feel','become',
+}
+
+
 class InvariantEngine:
     """
     Manages naming, decay, and spin-driven generation.
     Singleton — shared across the language processor and pipeline.
     """
-
-    _NO_NAME = {
-        # length < 3
-        "a", "an", "as", "at", "be", "by", "do", "if", "in",
-        "is", "it", "of", "on", "or", "so", "to", "up",
-        # 3-letter structural/connective
-        "the", "and", "are", "but", "can", "did", "for", "had",
-        "has", "how", "its", "may", "not", "now", "was", "will",
-        "yet", "did", "got", "let", "put", "set", "got", "nor",
-        # 4-letter structural
-        "also", "been", "both", "does", "done", "each", "else",
-        "even", "from", "have", "here", "just", "like", "made",
-        "many", "more", "most", "much", "must", "once", "only",
-        "over", "same", "such", "than", "that", "them", "then",
-        "they", "this", "thus", "very", "what", "when", "whom",
-        "with", "been", "whom", "were", "whom", "said", "whom",
-        # 4-letter prepositions/connectives observed being named
-        "into", "onto", "upon", "over", "also", "even", "just",
-        "once", "then", "than", "been", "will", "does", "your",
-        "they", "them", "each", "such", "both",
-        # Structural adverbs — high frequency, zero domain content
-        "always", "never", "often", "usually", "mostly", "rarely",
-        "already", "simply", "merely", "really", "quite", "rather",
-        "nearly", "almost", "barely", "surely", "truly", "fully",
-        # 5-letter
-        "their", "there", "these", "those", "which", "while",
-        "would", "could", "shall", "might", "about", "after",
-        "again", "below", "every", "first", "other", "where",
-        "still", "until", "under",
-        # Common verbs/nouns that repeat but carry no domain geometry
-        # These were being named from Q-only outputs contaminating the library
-        "things", "causes", "happen", "happens", "form", "forms",
-        "need", "needs", "learn", "learns", "make", "makes",
-        "use", "uses", "used", "show", "shows", "work", "works",
-        "come", "goes", "give", "gives", "take", "takes", "keep",
-        "thing", "cause", "place", "point", "part", "area", "case",
-        # Question-output artifacts that shouldn't be named
-        "during", "approach", "important", "around", "between",
-    }
 
     def __init__(self):
         self.named_invariants: Dict[str, Dict[str, Any]] = {}
@@ -177,11 +165,14 @@ class InvariantEngine:
 
     def try_name_word(
         self,
-        word:          str,
+        word: str,
         symbol_stream: List[str],
-        appearances:   int,
-        familiarity:   float,
-        centroid:      float,
+        appearances: int,
+        familiarity: float,
+        centroid: float,
+        nonsense_flag: bool = False,
+        penalty: float = 1.0,
+        distinct_contexts: int = 1,
     ) -> bool:
         """
         Attempt to name a word as a stable invariant.
@@ -195,18 +186,27 @@ class InvariantEngine:
         On success: etches to Ouroboros truth library, stores in named_invariants.
         Returns True if named, False otherwise.
         """
+        # Guard: never name structural/function words
+        if word.lower().rstrip('.,?!;:') in _INVARIANT_STRUCTURAL_WORDS:
+            return False
+
+        # 🚨 New: block nonsense input completely
+        if nonsense_flag:
+            return False
+
+        # 🚨 New: penalized inputs cannot become invariants
+        if penalty < 0.7:
+            return False
+        
+        if distinct_contexts < 2:
+            return False
+
         word_key = f"word::{word.lower()}"
 
         if word_key in self.named_invariants:
             return False   # already named
 
-        # Structural word guard — these words must never become named invariants.
-        # They are connective tissue or high-frequency function words that appear
-        # in every prompt and have no domain-specific geometric meaning.
-        if len(word.strip()) < 3 or word.lower().strip() in self._NO_NAME:
-            return False
-
-        if appearances < 2 or familiarity < 0.65 or centroid < _NAMING_THRESHOLD:
+        if appearances < 3 or familiarity < 0.70 or centroid < (_NAMING_THRESHOLD + 0.05):
             return False
 
         vec = self._word_to_vector(word, symbol_stream)
@@ -230,10 +230,6 @@ class InvariantEngine:
             desc = entry.get("desc", "")
             if desc.startswith("word::"):
                 word = desc[6:]
-                # Skip words in _NO_NAME — they may have been named before
-                # the blocklist was updated. Purge them on load.
-                if word in self._NO_NAME:
-                    continue
                 if desc not in self.named_invariants:
                     self.named_invariants[desc] = {
                         "word":        word,
