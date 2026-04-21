@@ -81,6 +81,9 @@ _BLOCKED = {
     "might", "cannot",
     # Conjunctions
     "and", "but", "or", "nor", "yet", "so",
+    # High-frequency verbs that slip into output as leading words
+    "causes", "allows", "makes", "gets", "goes", "comes",
+    "gives", "takes", "puts", "sets", "lets",
     # Prepositions that produce awkward output when leading a slot
     "with", "for", "at", "on", "of",
     # Spatial/temporal words that lead outputs incorrectly
@@ -89,12 +92,24 @@ _BLOCKED = {
 }
 
 # Connective prepositions worth inserting between verb and object
-# Only directional/relational prepositions that make clean bridges
-# 'with' removed — too ambiguous as a connective (produces 'X with Y' noise)
+# Pulled from negative-hemisphere groups which naturally collect
+# structural/relational words in the Dual-13 system
 _CONNECTIVES = {
-    "to", "through", "from", "by", "into", "via",
-    "across", "within", "between",
+    # Core directional
+    "to", "into", "onto", "through", "toward",
+    # Source/agent
+    "from", "by", "via",
+    # Spatial relations
+    "across", "within", "between", "along", "against",
+    "over", "under", "upon", "beyond", "beneath",
+    # Temporal
+    "after", "before", "during",
+    # Logical bridge
+    "for", "against",
 }
+
+# Connectives that are too generic to lead — only allowed as bridges
+_WEAK_CONNECTIVES = {"for", "by", "after", "before", "during"}
 
 
 def _conjugate(verb: str, subject: str) -> str:
@@ -131,16 +146,34 @@ def _conjugate(verb: str, subject: str) -> str:
 
 def _find_connective(per_word: List[Dict]) -> Optional[str]:
     """
-    Find the highest-tension preposition from pkt=1 words.
+    Find the best connective preposition from pkt=1 words.
+
+    Scoring: tension × group bonus.
+    Negative-group words (gid < 0) get a 1.5× bonus — the data shows
+    function/structural words cluster in the negative hemisphere.
+    Weak connectives (for, by, after, before, during) get 0.6× penalty
+    to prefer more specific directional prepositions.
     Returns None if none useful found.
     """
     candidates = []
     for w in per_word:
         wl = w.get("word", "").lower().rstrip(".,!?;:")
+        gid = w.get("dominant_group", w.get("grp", 0))
         if (w.get("pocket", 0) == 1
                 and wl in _CONNECTIVES
-                and abs(w.get("mean_tension", 0)) > 0.05):
-            candidates.append((abs(w.get("mean_tension", 0)), wl))
+                and abs(w.get("mean_tension", 0)) > 2 * 0.016395102):  # 2×AD ≈ 0.0328
+            t = abs(w.get("mean_tension", 0))
+            # Negative group bonus — structural/relational words
+            # Negative group bonus = φ/2 + 1 = 1.809? No.
+            # Use 1 + parity_threshold = 1 + 1/φ² ≈ 1.382
+            _parity_t   = 1.0 / ((1 + 5**0.5)/2)**2  # 1/φ² ≈ 0.382
+            group_bonus = (1.0 + _parity_t) if (isinstance(gid, (int, float)) and gid < 0) else 1.0
+            # Weak connective penalty
+            # Weak connective penalty = φ-1 = 1/φ ≈ 0.618 → round to use directly
+            _phi_inv    = 2 / (1 + 5**0.5)  # 1/φ ≈ 0.618
+            weak_pen    = _phi_inv if wl in _WEAK_CONNECTIVES else 1.0
+            score = t * group_bonus * weak_pen
+            candidates.append((score, wl))
 
     if not candidates:
         return None
@@ -256,10 +289,41 @@ def translate_raw(
 
     # Filter blocked words and known conjugation artifacts
     # 'ands', 'boths', 'ors' etc come from structural words getting conjugated
-    _ARTIFACTS = {"ands", "buts", "ors", "bys", "tos", "boths",
-                  "arounds", "beyonds", "theys", "eachs", "mights",
-                  "durings", "abouts", "agains", "intos", "overs",
-                  "unders", "alongs", "acrosss", "withins", "betweens"}
+    _ARTIFACTS = {
+        # Conjugated conjunctions
+        "ands", "buts", "ors", "nors", "yets", "sos",
+        # Conjugated prepositions
+        "bys", "tos", "ofs", "ons", "ats", "fors", "withs",
+        "arounds", "beyonds", "durings", "abouts", "agains",
+        "intos", "overs", "unders", "alongs", "acrosss",
+        "withins", "betweens", "throughs", "towards", "towardss",
+        "amongs", "amidsts", "besidess", "despites", "excepts",
+        "sinces", "untils", "upons", "withouts",
+        # Conjugated articles/determiners
+        "thes", "as", "ans",
+        # Conjugated pronouns
+        "theys", "thems", "theirs", "its", "wes", "yous",
+        "hes", "shes", "whos", "whoms",
+        # Conjugated question words
+        "hows", "whats", "whys", "whens", "wheres", "whichs",
+        # Conjugated quantifiers
+        "boths", "eachs", "everys", "somes", "anys", "alls",
+        "mosts", "mores", "manys", "muchs", "fews", "lessers",
+        "eithers", "neithers",
+        # Conjugated auxiliaries
+        "mights", "cants", "cannots", "woulds", "coulds",
+        "shoulds", "wills", "shalls", "musts", "mays",
+        "dos", "dids", "hass", "haves", "hads", "iss", "ares",
+        "wass", "weres", "beens", "bes",
+        # Conjugated adverbs
+        "stills", "alsos", "justs", "evens", "onlys", "verys",
+        "wells", "thens", "thuss", "hences", "yets", "toos",
+        "alreadys", "oftens", "usuallys", "nearlys",
+        # Conjugated structural nouns that shouldn't lead
+        "causess", "happenss", "thingss",
+        # Spatial/temporal conjugated forms already blocked individually
+        "upwards", "downwards", "inwards", "outwards",
+    }
     words = [w for w in words
              if w.lower().rstrip(".,!?;:") not in _BLOCKED
              and w.lower().rstrip(".,!?;:") not in _ARTIFACTS]
@@ -288,11 +352,13 @@ def translate_raw(
     words[0] = words[0].capitalize()
 
     # Find and insert connective
-    if fingerprint and len(words) >= 3:
+    if fingerprint and len(words) >= 2:
         per_word = fingerprint.get("per_word", [])
         conn = _find_connective(per_word)
         if conn and conn not in words:
-            # Insert after verb (position 2)
-            words = words[:2] + [conn] + words[2:]
+            # Insert after first word (subject) — position 1 if 2 words,
+            # position 2 (after verb) if 3+ words
+            insert_at = 2 if len(words) >= 3 else 1
+            words = words[:insert_at] + [conn] + words[insert_at:]
 
     return " ".join(words) + "."

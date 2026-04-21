@@ -306,7 +306,7 @@ class Waypoint:
 class BipolarLattice:
     """
     Full 18+8+27+52 bipolar lattice with golden zone, semantic tension injection,
-    and geometric spin tracking.
+    geometric spin tracking, and quad displacer axis state.
 
     Geometric tick:
       The 8 structural waypoints form a spin ring. Each tension cycle advances
@@ -314,6 +314,21 @@ class BipolarLattice:
       of all structural spin_phases. When the net_phase accumulates a full 2π
       increment since the last tick, one geometric_tick fires. This is the
       system's internal time unit — derived from field energy, not wall clock.
+
+    Quad Displacer Axes:
+      NS axis (odd groups):  N arm (+1,+3..+13) + S arm (-1,-3..-13)
+      EW axis (even groups): E arm (+2,+4..+12) + W arm (-2,-4..-12)
+
+      Two arms always active simultaneously — one positive, one negative.
+      Each arm runs positions 1-26 (S and W as negative 1-26).
+
+      Switch triggers (either fires):
+        1. axis_ticks >= 61  (fallback = round(1/AD))
+        2. Named invariant hit on inactive axis symbols
+        3. G_deficit > 0.5 AND axis_ticks > 10  (min dwell)
+
+      Axis state persists across prompts within a session.
+      Resets to NS on sleep cycle.
     """
 
     def __init__(self):
@@ -340,6 +355,23 @@ class BipolarLattice:
             "semantic_tension": 0.0,
             "zero_placeholder": True,
         }
+
+        # ── Quad displacer axis state ─────────────────────────────────────────
+        # NS axis = odd groups (builders/inverters) — default starting state
+        # EW axis = even groups (recognizers/compressors)
+        # Persists across prompts within a session, resets to NS on sleep cycle
+        self.current_axis: str = "NS"   # "NS" or "EW"
+        self.axis_ticks:   int = 0      # ticks on current axis
+
+        # Tick fallback = round(1/AD) = 61 — same constant as max settling ticks
+        self._AXIS_TICK_FALLBACK = round(1.0 / invariants.asymmetric_delta)  # 61
+
+        # NS arm symbol sets (odd signed integers)
+        self._NS_POS = frozenset('ACEGIKM')   # A=+1,C=+3,E=+5,G=+7,I=+9,K=+11,M=+13
+        self._NS_NEG = frozenset('NPRTVXZ')   # N=-1,P=-3,R=-5,T=-7,V=-9,X=-11,Z=-13
+        # EW arm symbol sets (even signed integers)
+        self._EW_POS = frozenset('BDFHJL')    # B=+2,D=+4,F=+6,H=+8,J=+10,L=+12
+        self._EW_NEG = frozenset('OQSUWY')    # O=-2,Q=-4,S=-6,U=-8,W=-10,Y=-12
 
         self._build_lattice()
 
@@ -950,6 +982,8 @@ class BipolarLattice:
             "zero_resolved":           cycle_result["zero_resolved"],
             "zero_braking":            cycle_result["zero_braking"],
             "symbol_mode":             "bipolar_27_lattice",
+            "current_axis":            self.current_axis,
+            "axis_ticks":              self.axis_ticks,
         }
 
     def _fold_negotiation_signal(self) -> float:
@@ -971,30 +1005,22 @@ class BipolarLattice:
 
     def get_exhaust_signature(self) -> np.ndarray:
         """
-        Current exhaust signature — 6-element vector:
-          Elements 0-4: normalized bleed ratios across the 5 geometric
-            stabilizers (sum = 1.0) — a coordinate in the 4-simplex.
-          Element 5: log1p(total_bleed) — magnitude of field activation.
+        Current exhaust signature — 5-element vector of cumulative bleed
+        totals across the 5 geometric stabilizers, normalized to ratios
+        (sum = 1.0) so the result is a coordinate in the 4-simplex.
 
-        The 5D ratio alone was degenerate: sentences with different total
-        energy but the same ratio distribution produced identical signatures
-        and zero distance to each other. Adding log-scaled magnitude breaks
-        this degeneracy. Two prompts must now match BOTH their stress pattern
-        AND their activation intensity to be considered geometrically similar.
+        This is the geometric fingerprint of the input that caused the
+        field stress pattern. Similar inputs produce similar signatures.
+        Different inputs produce distinct coordinates.
 
-        log1p is used (not log) so zero bleed maps cleanly to 0.0.
-        Derived from the same stabilizer bleed physics — no arbitrary constants.
-
-        Returns raw zeros (6D) if no stabilizer has fired yet this prompt.
+        Returns raw zeros if no stabilizer has fired yet this prompt.
         """
         stabs  = self._stabilizer_waypoints()
         totals = np.array([wp.bleed_total for wp in stabs], dtype=float)
         total  = totals.sum()
         if total < 1e-10:
-            return np.zeros(6)
-        normalized = totals / total
-        magnitude  = float(np.log1p(total))   # log-scaled intensity
-        return np.append(normalized, magnitude)
+            return np.zeros(len(stabs))
+        return totals / total
 
     def get_exhaust_rates(self) -> np.ndarray:
         """
@@ -1047,7 +1073,7 @@ class BipolarLattice:
         each etch so signatures accumulate over time like the truth library.
         """
         sig = self.get_exhaust_signature()
-        if sig[:5].sum() < 1e-10:   # check ratio portion only (element 5 is magnitude)
+        if sig.sum() < 1e-10:
             return  # nothing fired — no fingerprint to store
         self.exhaust_memory.append({
             "signature":     sig.tolist(),
@@ -1107,17 +1133,13 @@ class BipolarLattice:
         if not self.exhaust_memory:
             return []
         current = self.get_exhaust_signature()
-        if current[:5].sum() < 1e-10:  # check ratio portion
+        if current.sum() < 1e-10:
             return []
         results = []
         for entry in self.exhaust_memory:
             prior = np.array(entry["signature"], dtype=float)
-            # Handle mixed 5D/6D entries from prior sessions gracefully:
-            # pad old 5D entries with magnitude=0.0 so distance is computable
-            if len(prior) == 5 and len(current) == 6:
-                prior = np.append(prior, 0.0)
-            n    = min(len(current), len(prior))
-            dist = float(np.linalg.norm(current[:n] - prior[:n]))
+            n     = min(len(current), len(prior))
+            dist  = float(np.linalg.norm(current[:n] - prior[:n]))
             results.append({
                 "distance":  round(dist, 6),
                 "prompt":    entry["prompt"],
@@ -1128,6 +1150,74 @@ class BipolarLattice:
         return results[:top_n]
 
     # ── Status ────────────────────────────────────────────────────────────────
+
+    # ── Quad displacer axis ──────────────────────────────────────────────────
+
+    def get_active_arm_symbols(self) -> frozenset:
+        """Return the symbol set for the currently active axis arms."""
+        if self.current_axis == "NS":
+            return self._NS_POS | self._NS_NEG
+        return self._EW_POS | self._EW_NEG
+
+    def get_inactive_arm_symbols(self) -> frozenset:
+        """Return the symbol set for the inactive axis arms."""
+        if self.current_axis == "NS":
+            return self._EW_POS | self._EW_NEG
+        return self._NS_POS | self._NS_NEG
+
+    def symbol_on_inactive_axis(self, symbol: str) -> bool:
+        """True if this symbol falls on the currently inactive axis."""
+        return symbol.upper() in self.get_inactive_arm_symbols()
+
+    def tick_axis(
+        self,
+        named_inactive_hit: bool = False,
+        G_deficit:          float = 0.0,
+    ) -> bool:
+        """
+        Advance axis tick counter and check switch triggers.
+
+        Switch fires when ANY of:
+          1. axis_ticks >= 61  (fallback — round(1/AD))
+          2. named_inactive_hit  (named invariant found on inactive axis)
+          3. G_deficit > 0.5 AND axis_ticks > 10  (field struggling, min dwell met)
+
+        Returns True if axis switched this tick.
+        """
+        self.axis_ticks += 1
+
+        should_switch = (
+            self.axis_ticks >= self._AXIS_TICK_FALLBACK
+            or named_inactive_hit
+            or (G_deficit > 0.5 and self.axis_ticks > 10)
+        )
+
+        if should_switch:
+            self.switch_axis()
+            return True
+        return False
+
+    def switch_axis(self) -> None:
+        """Switch active axis between NS and EW. Zero routes between pairs."""
+        self.current_axis = "EW" if self.current_axis == "NS" else "NS"
+        self.axis_ticks   = 0
+
+    def reset_axis(self) -> None:
+        """Reset axis to NS — called by sleep cycle after dream pass."""
+        self.current_axis = "NS"
+        self.axis_ticks   = 0
+
+    def get_axis_state(self) -> Dict[str, Any]:
+        """Return axis state dict for persistence."""
+        return {
+            "current_axis": self.current_axis,
+            "axis_ticks":   self.axis_ticks,
+        }
+
+    def restore_axis_state(self, state: Dict[str, Any]) -> None:
+        """Restore axis state from field_state.json."""
+        self.current_axis = state.get("current_axis", "NS")
+        self.axis_ticks   = state.get("axis_ticks",   0)
 
     def get_status(self) -> Dict[str, Any]:
         active_strings = sum(1 for s in self.strings if s.active)
@@ -1149,7 +1239,9 @@ class BipolarLattice:
             "fold_negotiation_signal": round(self._fold_negotiation_signal(), 4),
             "transport_total":         round(sum(abs(s.tension) for s in self.strings if s.active), 6),
             "zero_braking":            (self._ring_spin_signal() == 0.0),
-            "mode":                    "bipolar_18_8_27_52_spin_d13",
+            "mode":                    "bipolar_18_8_27_52_quad_d13",
+            "current_axis":            self.current_axis,
+            "axis_ticks":              self.axis_ticks,
         }
 
 

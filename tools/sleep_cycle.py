@@ -37,7 +37,7 @@ from typing import List, Dict, Tuple
 _REPO_ROOT     = Path(__file__).resolve().parent.parent
 LIBRARY_FILE   = _REPO_ROOT / "ouro_truth_library.json"
 BACKUP_FILE    = _REPO_ROOT / "ouro_truth_library.backup.json"
-SLEEP_INTERVAL = 20   # prompts between sleep cycles
+SLEEP_INTERVAL = 10   # prompts between sleep cycles
 
 # ── _NO_NAME mirror — words that should never be named invariants ─────────────
 # Mirrors the set in language/invariant_engine.py
@@ -303,6 +303,14 @@ def run_sleep_cycle() -> str:
     try:
         from core.ouroboros_engine import ouroboros_engine
         ouroboros_engine._load_library()
+    except Exception:
+        pass
+
+    # Reset quad displacer axis to NS after dream pass
+    # The field starts each new accumulation period from the builder/inverter axis
+    try:
+        from utils.bipolar_lattice import bipolar_lattice
+        bipolar_lattice.reset_axis()
     except Exception:
         pass
 

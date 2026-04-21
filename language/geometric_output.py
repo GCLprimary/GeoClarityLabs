@@ -8,6 +8,7 @@ Everything else (Layer 1 heavy, Layer 2 connectors, multi-mode library access, a
 """
 
 import math
+import math
 import numpy as np
 from typing import Optional, Dict, Any, List, Tuple, Set
 
@@ -27,9 +28,9 @@ _P_LEVEL_0_MAX = 0.650   # below = L0 cold
 _P_LEVEL_1_MAX = 0.950   # below = L1 activating
 _P_LEVEL_2_MAX = 1.110   # below = L2 warm, above = L3 saturated
 _CONTENT_THRESHOLD          = 1.5
-_ANSWER_CONTENT_THRESHOLD   = 0.8
-_BOUNDARY_CONTENT_THRESHOLD = 0.8
-_NET_TENSION_SCALE          = 8.0
+_ANSWER_CONTENT_THRESHOLD   = round(49 * 0.016395102, 6)             # 49×AD ≈ 0.8034
+_BOUNDARY_CONTENT_THRESHOLD = round(49 * 0.016395102, 6)               # 49×AD ≈ 0.8034
+_NET_TENSION_SCALE          = 8.0  # = _N_STRUCTURAL backbone waypoints in bipolar_lattice
 
 _STRUCTURAL_ANCHORS = {
     # Core structural (originally present)
@@ -89,12 +90,12 @@ _PREP_FILTER = {
     "into", "onto", "upon", "inside", "outside",
 }
 
-_MULT_ANSWER_CANDIDATE     = 2.5
+_MULT_ANSWER_CANDIDATE     = round(((1+math.sqrt(5))/2)**2, 4)       # φ² ≈ 2.6180
 _MULT_CONTEXT_ONLY         = 1.5
 _MULT_ANCHOR               = 1.0
-_MULT_QUESTION_ONLY        = 0.4
-_MULT_UNKNOWN              = 0.8
-_MULT_SAME_SESS_OTHER      = 0.4
+_MULT_QUESTION_ONLY        = round(1.0 / ((1+math.sqrt(5))/2)**2, 6)  # 1/φ² = parity_threshold ≈ 0.381966
+_MULT_UNKNOWN              = round(49 * 0.016395102, 6)              # 49×AD ≈ 0.8034
+_MULT_SAME_SESS_OTHER      = round(1.0/((1+math.sqrt(5))/2)**2, 6)  # 1/φ² ≈ 0.381966
 _MULT_CROSS_SESS_CLOSE     = 0.75
 _MULT_CROSS_SESS_MID       = 0.50
 _MULT_CROSS_SESS_FAR       = 0.30
@@ -111,8 +112,23 @@ class GeometricOutput:
     # 'involves' appears in stable vocab with action-range scores
     # and fires as best verb even when a real fingerprint verb exists.
     _GENERIC_VERB_BLOCKLIST = {
-        "involves", "involves", "requires", "produces",
-        "contains", "consists", "represents", "indicates",
+        "involves", "requires", "produces", "contains",
+        "consists", "represents", "indicates",
+        # Generic high-frequency verbs that weaken output
+        "uses", "used", "using", "use",
+        "gets", "got", "getting",
+        "makes", "made", "making",
+        "goes", "went", "going",
+        "comes", "came", "coming",
+        "gives", "gave", "giving",
+        "takes", "took", "taking",
+        "puts", "put", "putting",
+        "sets", "set", "setting",
+        "lets", "let", "letting",
+        "keeps", "kept", "keeping",
+        "shows", "showed", "showing",
+        "seems", "seemed", "seeming",
+        "becomes", "became", "becoming",
     }
 
     _Q_SKIP_VERBS = {
@@ -521,136 +537,213 @@ class GeometricOutput:
         final_words = self._contextual_combiner(ordered, field, fingerprint, qtype, vocabulary,
                                                 question_verbs=_question_verbs)
 
-        # Layer 4: Minimal SVO spine — arrange into Subject-Verb-Object order
+        # Layer 4: Axis-driven semantic role chain
+        #
+        # Role assignment derives directly from Dual-13 group geometry:
+        #
+        #   NS arm (odd groups ±1,±3,±5,±7,±9,±11,±13) = builders/inverters
+        #     → SUBJECT (highest-scoring NS pkt=0 word)
+        #     → PRIMARY OBJECTS (remaining NS pkt=0 words, score-ordered)
+        #
+        #   EW arm (even groups ±2,±4,±6,±8,±10,±12) = recognizers/compressors
+        #     → VERB (highest-scoring EW pkt=0 word with ns >= 0.8)
+        #     → SECONDARY OBJECTS (remaining EW pkt=0 words)
+        #
+        #   Negative groups (gid < 0) = structural/bridge words
+        #     → CONNECTIVE (best connective from pkt=1 negative-group words)
+        #
+        # Skeleton: [NS-subject] [EW-verb] [connective] [NS-objects] [EW-objects]
+        #
+        # Resolution-gated chain length:
+        #   res >= 0.875 → 6 words   res >= 0.750 → 5 words
+        #   res >= 0.700 → 4 words   res <  0.700 → 3 words
+        #
+        # Verb fallback: if no EW verb found, skip verb slot entirely and
+        # use all remaining slots for objects — richer output beats weak verb.
 
-        _svo_verb   = next((w for w in final_words if w.get("pool") in ("action","verb")), None)
-        _svo_others = [w for w in final_words if w.get("pool") not in ("action","verb")]
-        if _svo_verb and len(_svo_others) >= 2:
-            _fp_per_word = fingerprint.get("per_word",[]) if fingerprint else []
+        _fp_per_word = fingerprint.get("per_word", []) if fingerprint else []
 
-            # PRIMARY subject signal: word in BOTH pkt=0 AND pkt=1.
-            # Confirmed across all grammatical outputs: the subject always
-            # repeats across pockets. Repetition = topic anchor = subject.
-            _pkt0_words = {
-                w.get("word","").lower().rstrip(".,!?;:")
-                for w in _fp_per_word if w.get("pocket",0) == 0
-                and w.get("word","").lower().rstrip(".,!?;:") not in _STRUCTURAL_ANCHORS
-            }
-            _pkt1_words = {
-                w.get("word","").lower().rstrip(".,!?;:")
-                for w in _fp_per_word if w.get("pocket",0) == 1
-                and w.get("word","").lower().rstrip(".,!?;:") not in _STRUCTURAL_ANCHORS
-            }
-            _both_pockets = _pkt0_words & _pkt1_words
+        # ── Resolution-gated chain length ──────────────────────────────────────
+        # max_chain = 5 = number of Möbius twist points (T1-T5) in the system.
+        # Each twist point corresponds to one semantic slot in the output.
+        # min_chain = 2 = subject + one object minimum.
+        # Scale from P0_cold (cold floor) to 0.875 (observed parity ceiling).
+        # P0_cold = √φ/φ² = 0.4859 — the geometric cold-start floor.
+        _res_now   = field.get("resolution", 0.15)
+        _P0_COLD   = invariants.P0_cold          # √φ/φ² ≈ 0.4859
+        _RES_CEIL  = 0.875                        # observed parity ceiling
+        _max_chain = max(2, min(5, round(
+            2 + (_res_now - _P0_COLD) / (_RES_CEIL - _P0_COLD) * 3
+        )))
 
-            # FALLBACK rank: named > pkt0 > score
-            _named_set = set()
-            if hasattr(invariant_engine, "get_named_words"):
-                _named_set = {w.lower() for w in invariant_engine.get_named_words()}
-            def _subj_rank(c):
-                wl = c.get("word","").lower()
-                return (1 if wl in _named_set else 0,
-                        1 if wl in _pkt0_words else 0,
-                        c.get("score", 0.0))
+        # ── Named invariant set ────────────────────────────────────────────────
+        _named_set = set()
+        if hasattr(invariant_engine, "get_named_words"):
+            _named_set = {w.lower() for w in invariant_engine.get_named_words()}
 
-            _both_cands = [c for c in _svo_others
-                           if c.get("word","").lower().rstrip(".,!?;:") in _both_pockets]
-            if _both_cands:
-                # Repetition signal — most reliable subject identification
-                _subject = max(_both_cands, key=lambda c: c.get("score", 0.0))
-            else:
-                # No repetition — prefer named invariants in pkt=0 as subject.
-                # For question-only prompts (no boundary), named invariants
-                # are the field's established domain anchors — they identify
-                # the topic more reliably than raw score.
-                _named_pkt0 = [
-                    c for c in _svo_others
-                    if c.get("word","").lower().rstrip(".,!?;:") in _named_set
-                    and c.get("word","").lower().rstrip(".,!?;:") in _pkt0_words
-                    and c.get("word","").lower().rstrip(".,!?;:") not in _STRUCTURAL_ANCHORS
-                ]
-                if _named_pkt0:
-                    # Named invariant in pkt=0 — highest scored wins
-                    _subject = max(_named_pkt0, key=lambda c: c.get("score", 0.0))
-                else:
-                    # Fall back to highest-charged pkt=0 content word
-                    _pkt0_cands = [
-                        c for c in _svo_others
-                        if c.get("word","").lower().rstrip(".,!?;:") in _pkt0_words
-                        and c.get("word","").lower().rstrip(".,!?;:") not in _STRUCTURAL_ANCHORS
-                    ]
-                    if _pkt0_cands:
-                        _subject = max(_pkt0_cands, key=lambda c: c.get("score", 0.0))
-                    else:
-                        _subject = max(_svo_others, key=_subj_rank)
+        # ── Four-arm Dual-13 role partition ────────────────────────────────────
+        # Each arm maps directly to a semantic role:
+        #
+        #   N arm: gid > 0 AND odd  (+1,+3,+5...+13) builders   → SUBJECT + primary objects
+        #   S arm: gid < 0 AND odd  (-1,-3,-5...-13) inverters  → VERB (inverted action)
+        #   E arm: gid > 0 AND even (+2,+4,+6...+12) recognizers→ OBJECTS / relations
+        #   W arm: gid < 0 AND even (-2,-4,-6...-12) compressors→ CONNECTIVES / modifiers
+        #
+        # This is the quad displacer geometry read directly as syntax.
 
-            # Object slot: prefer nouns over verb-form words.
-            # Words from pkt=0 with high charge are domain nouns.
-            # Words that are themselves verbs (in question_verbs or verb-form)
-            # get a score penalty in the object slot.
-            _pure_verb_forms = {"bends","melts","rises","falls","moves",
-                                 "flows","grows","contracts","expands",
-                                 "transmits","produces","creates","forms"}
-            _qv_snap = _question_verbs  # snapshot for closure
-            def _obj_score(c, _qv=_qv_snap):
-                wl  = c.get("word","").lower().rstrip(".,!?;:")
-                sc  = c.get("score", 0.0)
-                # Penalize if this word was used as the verb
-                if _svo_verb and wl == _svo_verb.get("word","").lower().rstrip(".,!?;:"):
-                    return -1.0
-                # Penalize verb-form words in object slot
-                if wl in _pure_verb_forms or wl in _qv:
-                    sc *= 0.4
-                return sc
-            _objects = sorted(
-                [w for w in _svo_others if w is not _subject],
-                key=_obj_score, reverse=True
-            )
-            final_words = [_subject, _svo_verb] + _objects
+        _fp_group_map = {
+            w.get("word","").lower().rstrip(".,!?;:"): w.get("dominant_group", w.get("grp", 0))
+            for w in _fp_per_word
+        }
+        _fp_ns_map = {
+            w.get("word","").lower().rstrip(".,!?;:"): abs(w.get("net_signed", w.get("net", 0)))
+            for w in _fp_per_word
+        }
 
-            # Deduplicate: prevents repeats including inflection variants
-            # (acid/acids, contract/contracts treated as same stem)
-            def _stem(w):
-                wl = w.lower().rstrip(".,!?;:s")  # strip trailing 's' for simple plural
-                return wl
+        _all_cands = [w for w in final_words if w.get("pool") not in ("action","verb")]
+        _verb_from_combiner = next(
+            (w for w in final_words if w.get("pool") in ("action","verb")), None
+        )
 
-            # Pre-populate seen set with subject and verb to block them
-            # from reappearing in the object slots
-            _seen_stems = set()
-            _subj_wl = _subject.get("word","").lower().rstrip(".,!?;:")
-            _seen_stems.add(_subj_wl)
-            _seen_stems.add(_stem(_subj_wl))
-            if _svo_verb:
-                _verb_wl = _svo_verb.get("word","").lower().rstrip(".,!?;:")
-                _seen_stems.add(_verb_wl)
-                _seen_stems.add(_stem(_verb_wl))
+        # Four pools
+        _N_cands = []   # +odd  → subject / primary nouns
+        _S_cands = []   # -odd  → verb candidates
+        _E_cands = []   # +even → object / relational
+        _W_cands = []   # -even → connective / modifier
 
-            _deduped = []
-            for w in final_words:
-                wl   = w.get("word","").lower().rstrip(".,!?;:")
-                stem = _stem(wl)
-                if stem not in _seen_stems:
-                    _deduped.append(w)
-                    _seen_stems.add(stem)
-                    _seen_stems.add(wl)
-            final_words = _deduped
+        for c in _all_cands:
+            wl  = c.get("word","").lower().rstrip(".,!?;:")
+            gid = _fp_group_map.get(wl, 0)
+            if   gid > 0 and gid % 2 == 1:   _N_cands.append((c, gid))
+            elif gid < 0 and abs(gid) % 2 == 1: _S_cands.append((c, gid))
+            elif gid > 0 and gid % 2 == 0:   _E_cands.append((c, gid))
+            elif gid < 0 and abs(gid) % 2 == 0: _W_cands.append((c, gid))
+            else:                               _N_cands.append((c, gid))  # boundary → treat as noun
 
-            # Word cap: calibrated by verb confidence
-            # Question verb (3x boost) = high confidence → cap at 3 words S+V+O
-            # Fallback verb = lower confidence → allow up to 4 words for richness
-            # 'Vaccines protect learns' stays 3. 'Dna contain chemical sequences' stays 4.
-            _verb_word  = _svo_verb.get("word","").lower().rstrip(".,!?;:") if _svo_verb else ""
-            _q_verb_hit = _verb_word in _question_verbs
-            if len(final_words) >= 5 and _q_verb_hit:
-                final_words = [_subject, _svo_verb] + ([_deduped[2]] if len(_deduped) > 2 else [])
-                self._svo_capped = True
-            elif len(final_words) > 4 and not _q_verb_hit:
-                final_words = _deduped[:4]
-                self._svo_capped = False
-            else:
-                self._svo_capped = False
-        else:
+        # Sort each pool by score descending
+        for pool in [_N_cands, _S_cands, _E_cands, _W_cands]:
+            pool.sort(key=lambda x: x[0].get("score", 0.0), reverse=True)
+
+        # Flatten for legacy compat (ns_cands = N+S for subject fallback)
+        _ns_cands    = _N_cands + _S_cands
+        _ew_cands    = _E_cands + _W_cands
+        _other_cands = []
+
+        # ── SUBJECT: highest-scoring N-arm named invariant, else highest N-arm ─
+        # N arm (positive odd) = builders = nouns/subjects
+        # Named N-arm invariants are highest priority — field-confirmed domain nouns
+        _subject = None
+        _N_named = [
+            (c, gid) for c, gid in _N_cands
+            if c.get("word","").lower().rstrip(".,!?;:") in _named_set
+        ]
+        if _N_named:
+            _subject = _N_named[0][0]
+        elif _N_cands:
+            _subject = _N_cands[0][0]
+        elif _ns_cands:   # fallback: any NS if no pure N
+            _subject = _ns_cands[0][0]
+        elif _ew_cands:
+            _subject = _ew_cands[0][0]
+
+        if _subject is None:
             self._svo_capped = False
+        else:
+            _subj_wl = _subject.get("word","").lower().rstrip(".,!?;:")
+
+            # ── VERB: S arm first (-odd = inverters), then E arm, then combiner ──
+            # Verb ns threshold: 49 × AD ≈ 0.8034
+            # Derived: 49 is the largest integer where 49×AD stays below parity_threshold×2
+            # This filters low-charge words (nouns/modifiers) from the verb pool
+            _VERB_NS_MIN = 49 * invariants.asymmetric_delta   # ≈ 0.8034
+            # S arm words are inverters — they negate/act-upon the subject.
+            # E arm words are recognizers — relational/processual.
+            # If no clean verb found → skip slot for richer objects.
+            _svo_verb = None
+            _VERB_NOUN_ENDINGS_L4 = ("tion","sion","ness","ment","ity","ance","ence",
+                                      "ogen","agen","gen","ism","ist","ogy","ium")
+            _GENERIC_SKIP = {"produces","requires","involves","contains","consists",
+                             "uses","makes","gets","goes","comes","gives","takes",
+                             "puts","sets","lets","keeps","shows","seems","becomes"}
+
+            # Try S arm first (negative odd = inverters = action words)
+            for c, gid in _S_cands:
+                wl        = c.get("word","").lower().rstrip(".,!?;:")
+                actual_ns = _fp_ns_map.get(wl, 0)
+                if (wl != _subj_wl
+                        and actual_ns >= _VERB_NS_MIN
+                        and not any(wl.endswith(e) for e in _VERB_NOUN_ENDINGS_L4)
+                        and wl not in _GENERIC_SKIP
+                        and wl not in _STRUCTURAL_ANCHORS):
+                    _svo_verb = c
+                    break
+
+            # Try E arm if S arm had nothing (positive even = recognizers)
+            if _svo_verb is None:
+                for c, gid in _E_cands:
+                    wl        = c.get("word","").lower().rstrip(".,!?;:")
+                    actual_ns = _fp_ns_map.get(wl, 0)
+                    if (wl != _subj_wl
+                            and actual_ns >= _VERB_NS_MIN
+                            and not any(wl.endswith(e) for e in _VERB_NOUN_ENDINGS_L4)
+                            and wl not in _GENERIC_SKIP
+                            and wl not in _STRUCTURAL_ANCHORS):
+                        _svo_verb = c
+                        break
+
+            # Try combiner verb only if it's a real domain verb (not generic)
+            if _svo_verb is None and _verb_from_combiner:
+                _vw = _verb_from_combiner.get("word","").lower().rstrip(".,!?;:")
+                if _vw not in _GENERIC_SKIP and _vw != _subj_wl:
+                    _svo_verb = _verb_from_combiner
+
+            # ── CONNECTIVE from pkt=1 negative-group words ────────────────────
+            _conn_word = None
+            if fingerprint:
+                from language.output_translator import _find_connective
+                _conn_word = _find_connective(_fp_per_word)
+
+            # ── DEDUPLICATE helper ────────────────────────────────────────────
+            def _stem_s(w):
+                return w.lower().rstrip(".,!?;:s")
+
+            _used = {_subj_wl, _stem_s(_subj_wl)}
+            if _svo_verb:
+                _vw = _svo_verb.get("word","").lower().rstrip(".,!?;:")
+                _used.add(_vw)
+                _used.add(_stem_s(_vw))
+            if _conn_word:
+                _used.add(_conn_word)
+
+            # ── REMAINING OBJECTS: N arm first, then E arm, then S/W leftovers ──
+            # N arm nouns lead (most concrete domain words)
+            # E arm relations follow (processual/relational words)
+            # S arm leftovers last (unused inverters as modifiers)
+            _remaining = []
+            for pool in [_N_cands, _E_cands, _S_cands, _W_cands]:
+                for c, gid in pool:
+                    wl = c.get("word","").lower().rstrip(".,!?;:")
+                    if _stem_s(wl) not in _used and wl not in _used:
+                        _remaining.append(c)
+                        _used.add(wl)
+                        _used.add(_stem_s(wl))
+
+            # ── SLOT BUDGET ───────────────────────────────────────────────────
+            _has_verb = _svo_verb is not None
+            _has_conn = _conn_word is not None
+            _fixed_slots = 1 + (1 if _has_verb else 0) + (1 if _has_conn else 0)
+            _obj_slots   = max(1, _max_chain - _fixed_slots)
+
+            # ── ASSEMBLE CHAIN ────────────────────────────────────────────────
+            _chain = [_subject]
+            if _svo_verb:
+                _chain.append(_svo_verb)
+            if _conn_word:
+                _chain.append({"word": _conn_word, "pool": "connective", "pos": 0.5})
+            _chain.extend(_remaining[:_obj_slots])
+
+            final_words = _chain
+            self._svo_capped = (len(_remaining) > _obj_slots)
 
         # Final articulation — detect anchor from pkt=1 subject
         # The first non-skip word in pkt=1 after question words is the subject
@@ -714,12 +807,20 @@ class GeometricOutput:
             for _fw in fingerprint.get("per_word", []):
                 _current_fp_word_set.add(_fw.get("word","").lower().rstrip(".,!?;:"))
 
+        # Noun endings — words ending in these are never verbs regardless of other signals
+        _VERB_NOUN_ENDINGS = ("tion","sion","ness","ment","ity","ance","ence",
+                              "ogen","agen","gen","ism","ist","ogy","ium",
+                              "ary","ery","ory","phy","thy","chy","nce","nse")
+
         verb_pool = []
         if fingerprint:
             for w in fingerprint.get("per_word", []):
                 if w.get("pocket", 0) == 1:
                     wl = w.get("word", "").lower().rstrip("?!.,;:")
-                    if wl not in self._Q_SKIP_VERBS and abs(w.get("net_signed", 0.0)) < 3.0:
+                    _vns = abs(w.get("net_signed", 0.0))
+                    if (wl not in self._Q_SKIP_VERBS
+                            and 0.8 <= _vns < 3.0
+                            and not any(wl.endswith(e) for e in _VERB_NOUN_ENDINGS)):
                         verb_pool.append({"word": w.get("word"), "ns": w.get("net_signed", 0.0), "t": w.get("mean_tension", 0.0)})
 
         if hasattr(vocabulary, "get_stable_words"):
@@ -764,6 +865,12 @@ class GeometricOutput:
         # (ends in common verb suffixes or appears in known action patterns).
         if not best_verb:
             _VERB_ENDINGS = ("s","es","ed","ing","ize","ise","ate","fy","en")
+            # Noun endings that override verb suffix matches — these words
+            # end in verb-like suffixes but are definitely nouns
+            _NOUN_ENDINGS = ("tion","sion","ness","ment","ity","ance","ence",
+                             "ogen","agen","ogen","gen","ism","ist","ogy",
+                             "ium","ary","ery","ory","phy","thy","chy",
+                             "nce","nse","dge","lge","rge","nge")
             _fp_verbs = []
             if fingerprint:
                 for w in fingerprint.get("per_word", []):
@@ -772,9 +879,10 @@ class GeometricOutput:
                         t  = abs(w.get("mean_tension", 0.0))
                         ns = abs(w.get("net_signed", 0.0))
                         if (any(wl.endswith(e) for e in _VERB_ENDINGS)
+                                and not any(wl.endswith(e) for e in _NOUN_ENDINGS)
                                 and wl not in self._Q_SKIP_VERBS
                                 and wl not in _STRUCTURAL_ANCHORS
-                                and ns < 3.0 and t > 0.05):
+                                and 0.8 <= ns < 3.0 and t > 0.05):
                             _fp_verbs.append((t * ns, wl))
             if _fp_verbs:
                 _fp_verbs.sort(reverse=True)
@@ -1025,7 +1133,7 @@ class GeometricOutput:
                     # This is the system's own convergence radius — the
                     # same constant used in polarity/pressure thresholding.
                     _NS_SCALE   = 6.0     # normalize ns to [-1, 1] range
-                    _GRP_SCALE  = 17.0    # normalize group to [0, 1]
+                    _GRP_SCALE  = 13.0    # normalize group to [-1, +1] — signed Dual-13 range
                     _R_RESONANT = 0.381966  # 1/φ² — parity threshold
 
                     # 1. Euclidean orbit distance in normalized field space
@@ -1046,7 +1154,13 @@ class GeometricOutput:
 
                     # 3. Group resonance bonus (same symbol group = same resonance)
                     _q_grp_int = round(sum(_q_groups) / max(len(_q_groups), 1))
+                    # Same sign hemisphere = shared axis orientation → group bonus
+                    # Adjacent integer distance ≤ 2 on same hemisphere also scores
+                    _same_hemi = ((_grp > 0 and _q_grp_int > 0) or
+                                  (_grp < 0 and _q_grp_int < 0) or
+                                  (_grp == 0 and _q_grp_int == 0))
                     _grp_bonus = (0.2 if _grp == _q_grp_int
+                                  else 0.15 if (_same_hemi and abs(_grp - _q_grp_int) <= 2)
                                   else 0.1 if abs(_grp - _q_grp_int) <= 2 else 0.0)
 
                     # Combined bounded orbit score
@@ -1135,8 +1249,10 @@ class GeometricOutput:
             "domain_flipped": domain_flipped,
         }
 
-    def format_output(self, result: Dict[str, Any]) -> str:
-        text       = result["text"]
+    def format_output(self, result: Dict[str, Any],
+                      fingerprint: Optional[Dict[str, Any]] = None) -> str:
+        from language.output_translator import translate_raw
+        text       = translate_raw(result["text"], fingerprint=fingerprint)
         locked     = result["parity_locked"]
         alignment  = result["alignment"]
         confidence = result["confidence"]

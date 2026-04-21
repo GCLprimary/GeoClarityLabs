@@ -1,57 +1,59 @@
 """
 utils/symbol_grouping.py
 ========================
-Symbol Grouping Semantics — Dual-13 Signed Integer Mapping
+Symbol Grouping Semantics — Dual-13 Direct Assignment (27 groups)
 
 DUAL-13 SYSTEM
 ──────────────
-The 27-symbol alphabet is a signed integer system, not a linear sequence:
+The 27-symbol alphabet is a signed integer system:
 
-  0          →  central regulator  (governs +1/-1 spin tick, not a content symbol)
-  A=+1 … M=+13  →  positive side  (A through M, 13 symbols)
-  N=-1 … Z=-13  →  negative side  (N through Z, 13 symbols)
+  0          →  group  0  central regulator / boundary / fulcrum
+  A=+1 … M=+13  →  groups +1 to +13  (positive side)
+  N=-1 … Z=-13  →  groups -1 to -13  (negative side)
 
-This means:
-  - A and N are mirror images at ±1
-  - M and Z are the positive and negative ceilings at ±13
-  - 0 is the fulcrum — it regulates transition, not content
-  - The alphabet folds in half at the 0/M-N boundary
+GROUP ASSIGNMENT (DIRECT — NO PROXIMITY CLUSTERING)
+────────────────────────────────────────────────────
+Each symbol maps directly to its signed integer value as its group ID.
+One symbol per group. 27 total groups. No proximity radius required.
 
-LATTICE MAPPING (REBUILT)
-──────────────────────────
-Positive symbols (A–M, values +1 to +13) map to the first half of
-the Fibonacci lattice [0, π) — expanding outward from 0.
+  group_id = symbol_to_signed(symbol)
 
-Negative symbols (N–Z, values -1 to -13) map to the second half
-[π, 2π) — expanding outward from π in the negative direction.
+This replaces the previous proximity-clustering approach (18 groups
+from radius=20 on 512-point Fibonacci lattice). The direct assignment
+gives maximum separation — no two symbols share a group — while
+preserving all Dual-13 geometric properties.
 
-0 maps exactly to π — the boundary between positive and negative,
-which is also why it shares a lattice coordinate with N (-1).
-N is the first step into negative territory and 0 is the boundary
-they both sit on. This is geometrically correct, not a bug.
+QUAD DISPLACER AXES
+───────────────────
+Groups align naturally to the quad displacer axes:
+
+  NS axis (odd):  groups ±1,±3,±5,±7,±9,±11,±13  (builders/inverters)
+  EW axis (even): groups ±2,±4,±6,±8,±10,±12      (recognizers/compressors)
+  Centre:         group  0                          (boundary/routing)
+
+  N arm: +1,+3,+5,+7,+9,+11,+13  (positive odd  — builders)
+  S arm: -1,-3,-5,-7,-9,-11,-13  (negative odd  — inverters)
+  E arm: +2,+4,+6,+8,+10,+12     (positive even — recognizers)
+  W arm: -2,-4,-6,-8,-10,-12     (negative even — compressors)
+
+Each arm runs positions 1-26 (S and W as negative 1-26).
+Two arms always active simultaneously — one positive, one negative.
 
 ODD/EVEN ASYMMETRY (SIGNED)
 ────────────────────────────
 Odd absolute values (±1,±3,±5,±7,±9,±11,±13) build vertically.
 Even absolute values (±2,±4,±6,±8,±10,±12) recognize horizontally.
 
-Positive odd  → vertical upward   (+)
-Negative odd  → vertical downward (-)
-Positive even → horizontal right  (+, compressed)
-Negative even → horizontal left   (-, compressed)
-
 GROUP TENSION
 ─────────────
-Each group's base_tension is now computed from the signed integer
-values of its members, not their raw alphabet positions. This means
-a group containing A(+1) and N(-1) has near-zero net tension —
-they cancel. A group containing M(+13) and L(+12) has strong
-positive tension. The geometry encodes magnitude and direction.
+Each group's base_tension is computed from its single symbol's signed
+integer value and imprint centroid. With one symbol per group the
+tension is clean and unambiguous.
 """
 
 import math
 import numpy as np
-from typing import Dict, Any, List, Tuple, Optional, Set
+from typing import Dict, Any, List, Tuple, Optional
 
 from core.invariants import invariants
 from utils.fold_line_resonance import fold_line_resonance
@@ -61,9 +63,6 @@ _GOLDEN_ANGLE     = math.pi * (3 - math.sqrt(5))
 _TWO_PI           = 2 * math.pi
 _LATTICE_POINTS   = 512
 _SYMBOLS          = ['0'] + [chr(ord('A') + i) for i in range(26)]  # 27 symbols
-
-# Neighbourhood radius — just above mean symbol spacing in the new mapping
-_GROUP_RADIUS     = 20
 
 # Minimum imprint to be considered an active resonance point
 _IMPRINT_THRESHOLD = 0.005
@@ -122,6 +121,26 @@ def signed_to_lattice_angle(signed_val: int) -> float:
         return (signed_val / 14.0) * math.pi
     else:
         return math.pi + (abs(signed_val) / 14.0) * math.pi
+
+
+def symbol_d13_polarity(sym: str) -> str:
+    """
+    Return the dual-13 polarity and direction of a symbol.
+
+      positive odd  → 'vertical_up'
+      positive even → 'horizontal_right'
+      negative odd  → 'vertical_down'
+      negative even → 'horizontal_left'
+      zero          → 'regulator'
+    """
+    val = symbol_to_signed(sym)
+    if val == 0:
+        return 'regulator'
+    abs_val = abs(val)
+    if val > 0:
+        return 'vertical_up'   if abs_val % 2 == 1 else 'horizontal_right'
+    else:
+        return 'vertical_down' if abs_val % 2 == 1 else 'horizontal_left'
 
 
 class SymbolGroup:
@@ -294,88 +313,57 @@ class SymbolGrouping:
 
     def _compute_groups(self) -> None:
         """
-        Cluster symbols by shared fold-line imprint proximity.
+        Assign each symbol directly to its Dual-13 signed integer group.
 
-        Algorithm:
-          1. Get current imprint array from fold_line_resonance
-          2. For each symbol, check if its lattice index is imprinted
-             above threshold
-          3. Build groups by proximity: two symbols join the same group
-             if their lattice indices are within _GROUP_RADIUS of each
-             other AND both are imprinted
-          4. Unimprinted symbols each get their own singleton group
-             (they haven't been touched by resonance yet — no context)
-          5. Update tension centroids from imprint values
+        group_id = symbol_to_signed(symbol)
+
+        This replaces proximity clustering. Each symbol gets its own group
+        whose ID equals its signed integer value (-13 to +13, plus 0).
+        27 groups total — one per symbol. No radius, no imprint threshold
+        required for group assignment.
+
+        Imprint centroids are still updated from the fold-line lattice so
+        tension calculations remain field-aware.
         """
-        imprints = fold_line_resonance.lattice_imprints
-
-        # Find imprinted symbols
-        imprinted: List[Tuple[str, int, float]] = []
-        unimprinted: List[str] = []
+        imprints   = fold_line_resonance.lattice_imprints
+        new_groups: List[SymbolGroup] = []
 
         for sym in _SYMBOLS:
-            lidx   = self._symbol_lattice_indices[sym]
-            imp    = float(imprints[lidx]) if lidx < len(imprints) else 0.0
-            if imp >= _IMPRINT_THRESHOLD:
-                imprinted.append((sym, lidx, imp))
-            else:
-                unimprinted.append(sym)
+            signed_val = symbol_to_signed(sym)   # group_id = signed integer
+            lidx       = self._symbol_lattice_indices[sym]
 
-        # Sort by lattice index for proximity sweep
-        imprinted.sort(key=lambda x: x[1])
-
-        new_groups: List[SymbolGroup] = []
-        assigned:   Set[str]          = set()
-        group_id = 0
-
-        for sym, lidx, imp in imprinted:
-            if sym in assigned:
-                continue
-
-            # Start a new group with this symbol as seed
-            grp = SymbolGroup(group_id, sym, lidx)
-            assigned.add(sym)
-
-            # Sweep for neighbours within _GROUP_RADIUS
-            for other_sym, other_lidx, other_imp in imprinted:
-                if other_sym in assigned:
-                    continue
-                if abs(other_lidx - lidx) <= _GROUP_RADIUS:
-                    grp.add(other_sym, other_lidx)
-                    assigned.add(other_sym)
-
+            grp = SymbolGroup(signed_val, sym, lidx)
             grp.update_centroid(imprints)
             new_groups.append(grp)
-            group_id += 1
-
-        # Singleton groups for unimprinted symbols
-        for sym in unimprinted:
-            lidx = self._symbol_lattice_indices[sym]
-            grp  = SymbolGroup(group_id, sym, lidx)
-            grp.update_centroid(imprints)
-            new_groups.append(grp)
-            group_id += 1
 
         self.groups = new_groups
 
-        # Rebuild symbol → group_id map
-        self.symbol_map = {}
-        for grp in self.groups:
-            for sym in grp.members:
-                self.symbol_map[sym] = grp.group_id
+        # Rebuild symbol → group_id map (group_id is the signed integer)
+        self.symbol_map = {sym: symbol_to_signed(sym) for sym in _SYMBOLS}
 
         self._last_imprint_sum = float(np.sum(imprints))
 
     def _should_recompute(self) -> bool:
+        """
+        Group IDs are fixed (direct Dual-13 assignment) so structure never
+        changes. Only recompute when imprint centroids have shifted enough
+        to affect tension calculations.
+        """
         current_sum = float(np.sum(fold_line_resonance.lattice_imprints))
-        return abs(current_sum - self._last_imprint_sum) > _RECOMPUTE_THRESHOLD if \
-               hasattr(self, '_recompute_threshold') else True
+        return abs(current_sum - self._last_imprint_sum) > (
+            self._recompute_threshold if hasattr(self, '_recompute_threshold') else 0.02
+        )
 
     def _ensure_groups(self) -> None:
-        """Recompute groups if imprint pattern has shifted enough."""
+        """
+        Ensure groups are initialised and centroids are current.
+        Group IDs never change — only centroid values update with field activity.
+        """
+        if not self.groups:
+            self._compute_groups()
+            return
         current_sum = float(np.sum(fold_line_resonance.lattice_imprints))
-        if (not self.groups or
-                abs(current_sum - self._last_imprint_sum) > self._recompute_threshold):
+        if abs(current_sum - self._last_imprint_sum) > self._recompute_threshold:
             self._compute_groups()
 
     # ── Public interface ──────────────────────────────────────────────────────
@@ -476,7 +464,7 @@ class SymbolGrouping:
 
         # Centroid weight — floor-based so imprinted symbols contribute fully
         centroid_weight = (g1.tension_centroid + g2.tension_centroid) / 2.0
-        weight = max(0.1, 1.0 - (1.0 - centroid_weight) ** 2)  # floor: unimprinted pairs retain raw geometric identity
+        weight = 1.0 - (1.0 - centroid_weight) ** 2
         base  *= weight
 
         return {

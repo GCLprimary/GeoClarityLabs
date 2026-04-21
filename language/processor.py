@@ -257,7 +257,14 @@ class LanguageProcessor:
         # rather than a hard gate — high-charge words override position.
         #
         # Structural groups: carry function words, pull toward neutral
-        _STRUCTURAL_GROUPS = {5, 3, 11}  # question words, prepositions, articles
+        # Dual-13 structural criterion — derived from signed integer geometry:
+        # Negative hemisphere (gid < 0) = recognizers/compressors = structural/function role
+        # Positive hemisphere (gid > 0) = builders = content word role
+        # Data confirms: function words hash almost exclusively to negative groups.
+        # Content words hash almost exclusively to positive groups.
+        # abs() <= 4 was too aggressive — grp+4 contains pathogen, plants, plates, process.
+        def _is_structural_group(gid: int) -> bool:
+            return gid < 0
         # Content threshold: words above this geo_score are context-bearing
         _GEO_THRESHOLD = 0.8  # tuned to separate content from function words
 
@@ -311,6 +318,10 @@ class LanguageProcessor:
 
             # THREE-SIGNAL POCKET ASSIGNMENT:
             #
+            # Derived thresholds — no magic numbers
+            _parity_4x = 4 * (invariants.P_max / 3)       # 4/φ² = 4×P_max/3 ≈ 1.528
+            _geo_min   = 3 * invariants.asymmetric_delta  # 3×AD ≈ 0.049
+
             # SIGNAL 1 — Named invariant → pkt=0 ONLY if before boundary.
             # If named AND after boundary → pkt=1 (it's in the question).
             # This preserves subject-from-repetition: a named word that
@@ -324,7 +335,7 @@ class LanguageProcessor:
 
             # SIGNAL 2 — Function word → always pkt=1 (structural/query word)
             # These words carry syntax, not domain geometry.
-            elif _wl in _FUNC_WORDS or (_grp in _STRUCTURAL_GROUPS and _ns < 1.5):
+            elif _wl in _FUNC_WORDS or (_is_structural_group(_grp) and _ns < _parity_4x):
                 d["pocket"] = 1
 
             # SIGNAL 3 — Geometric score with positional prior
@@ -636,6 +647,21 @@ class LanguageProcessor:
         else:
             pressure_state["settling_ticks"] = 0
             pressure_state["was_q_only"]     = _is_q_only
+
+        # ── Quad displacer axis tick ─────────────────────────────────────────
+        # Check if any newly_named word falls on the inactive axis.
+        # If so, the field has evidence the inactive axis has content — switch.
+        _inactive_syms = bipolar_lattice.get_inactive_arm_symbols()
+        _named_inactive_hit = any(
+            # Check dominant symbol of each newly-named word
+            (ord(w[0].upper()) - ord('A') + 1) in range(1, 27)
+            and chr(ord('A') + (ord(w[0].upper()) - ord('A'))) in _inactive_syms
+            for w in newly_named if w
+        )
+        bipolar_lattice.tick_axis(
+            named_inactive_hit = _named_inactive_hit,
+            G_deficit          = _G_deficit,
+        )
 
         geo_result = geometric_output.generate(
             fingerprint=fingerprint,

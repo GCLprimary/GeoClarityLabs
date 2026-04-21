@@ -10,7 +10,7 @@ resolution 0.15 every time.
 What persists:
   - fold_line:     spin_phase, resolution_score, imprint state
   - symbol_groups: the dual-pole group structure (the learned geometry)
-  - bipolar:       ring phase, global clarity, field stress
+  - bipolar:       ring phase, global clarity, field stress, axis state
   - mobius:        last_spin_phase for T3 delta accuracy
   - carry:         net carry and consensus state
   - conversation:  rolling window of recent exchanges for context priming
@@ -118,7 +118,7 @@ class FieldStateManager:
                         "size":             g.get("size", 0),
                     })
 
-            # ── Bipolar lattice — ring/field summary ──────────────────────
+            # ── Bipolar lattice — ring/field summary + axis state ─────────
             bipolar_data = {
                 "ring_net_phase":           round(bl_status.get("ring_net_phase", 0.0), 6),
                 "global_clarity":           round(bl_status.get("global_clarity", 0.0), 6),
@@ -126,6 +126,8 @@ class FieldStateManager:
                 "field_stress":             round(bl_status.get("field_stress", 0.5), 6),
                 "fold_negotiation_signal":  round(bl_status.get("fold_negotiation_signal", 0.0), 6),
                 "total_prompts_this_field": proc_status.get("process_count", 0),
+                # Quad displacer axis state — persists across sessions
+                "axis_state":               bipolar_lattice.get_axis_state(),
             }
 
             # ── Möbius reader — T3 delta continuity ──────────────────────
@@ -167,10 +169,12 @@ class FieldStateManager:
             with open(_STATE_FILE, "w", encoding="utf-8") as f:
                 json.dump(state, f, indent=2)
 
+            _axis = bipolar_data.get("axis_state", {}).get("current_axis", "NS")
             print(f"[field_state] Saved — "
                   f"resolution={fold_data['resolution_score']:.3f}  "
                   f"groups={len(groups_data)}  "
                   f"total_prompts={state['_total_prompts_processed']}  "
+                  f"axis={_axis}  "
                   f"conv={len(conv_data.get('recent_exchanges', []))}")
             return True
 
@@ -195,6 +199,13 @@ class FieldStateManager:
             if state.get("_schema_version") != _SCHEMA_VER:
                 print(f"[field_state] Schema version mismatch — cold start")
                 return None
+
+            # Defensive: fix any legacy list-vs-dict issues in sub-sections
+            for key in ("fold_line", "bipolar", "mobius", "carry", "conversation"):
+                if not isinstance(state.get(key), dict):
+                    state[key] = {}
+            if not isinstance(state.get("symbol_groups"), list):
+                state["symbol_groups"] = []
 
             res      = state.get("fold_line", {}).get("resolution_score", 0.15)
             groups   = len(state.get("symbol_groups", []))
@@ -272,6 +283,21 @@ class FieldStateManager:
 
         except Exception as e:
             print(f"[field_state] Fold line restore failed: {e}")
+            return False
+
+    def apply_bipolar_axis(self, bipolar_lattice, state: Dict) -> bool:
+        """Restore quad displacer axis state from saved field state."""
+        try:
+            bp = state.get("bipolar", {})
+            axis_state = bp.get("axis_state", {})
+            if axis_state:
+                bipolar_lattice.restore_axis_state(axis_state)
+                print(f"[field_state] Axis restored — "
+                      f"axis={axis_state.get('current_axis','NS')}  "
+                      f"ticks={axis_state.get('axis_ticks',0)}")
+            return True
+        except Exception as e:
+            print(f"[field_state] Axis restore failed: {e}")
             return False
 
     def apply_mobius(self, mobius_reader, state: Dict) -> bool:
